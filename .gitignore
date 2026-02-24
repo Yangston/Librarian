@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+.env.local
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
