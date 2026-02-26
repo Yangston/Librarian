@@ -1,229 +1,353 @@
-You are acting as a senior full-stack engineer and systems architect.
+# Librarian — Phase 2 AGENTS.md
 
-Project Name: Librarian
+You are acting as a senior systems architect and AI infrastructure engineer.
 
+Project: Librarian 
+ 
 High-Level Vision:
 Librarian is a structured cognitive layer for AI systems. 
 Instead of chat conversations remaining unstructured logs, Librarian converts live conversations into a transparent, queryable, relational knowledge system.
 
-The goal of Phase 1 (MVP) is NOT to build a full knowledge graph platform.
-The goal is to prove one core capability:
+Stage: Phase 2 — Intelligent Structuring + Entity Resolution + Schema Evolution  
 
-    Conversations → Structured Entities + Facts + Relations → Transparent Database
+Phase 1 proved:
+Conversations → Entities/Facts/Relations → Transparent storage.
 
-This MVP must prioritize:
-- Clarity
-- Simplicity
-- Clean architecture
-- Deterministic data structure
-- Explainability (trace each extracted record back to source messages)
+Phase 2 must prove:
+Conversations → Adaptive Structured Knowledge System that improves over time.
 
-Do NOT build advanced AI orchestration.
-Do NOT build general ontology engines.
-Do NOT build unnecessary UI complexity.
-Do NOT over-engineer.
+This is no longer a demo.
+This is the beginning of a defensible product.
 
-------------------------------------
-PHASE 1 MVP REQUIREMENTS
-------------------------------------
+------------------------------------------------------------
+PHASE 2 OBJECTIVES
+------------------------------------------------------------
 
-Core Functionality:
+1) Replace rule-based extraction with structured LLM extraction.
+2) Implement entity resolution + deduplication.
+3) Implement schema stabilization (controlled type system).
+4) Introduce conversation-level knowledge graph reasoning.
+5) Improve explainability + traceability.
+6) Prepare architecture for multi-conversation aggregation.
+7) Introduce search + embeddings layer.
 
-1) Message Ingestion
-- Accept a conversation (array of messages).
-- Store messages in database.
-- Each message has:
-    id
-    conversation_id
-    role (user / assistant)
-    content
-    timestamp
+Do NOT:
+- Build enterprise multi-tenancy yet.
+- Over-engineer graph visualization.
+- Add premature distributed systems.
+- Build full ontology automation.
 
-2) Extraction Pipeline (initially rule-based or stub)
-- Convert messages into:
-    - Entities
-    - Facts
-    - Relations
-- Every extracted record must store:
-    source_message_ids (array of message IDs)
-- Extraction must be modular so we can swap in an LLM later.
+------------------------------------------------------------
+CORE ARCHITECTURAL EVOLUTION
+------------------------------------------------------------
 
-3) Transparent Database View
-- Ability to query:
-    - Entities by conversation
-    - Facts by conversation
-    - Relations by conversation
-- Ability to click a fact/relation and see:
-    - The source message(s)
-    - The exact text snippet (if available)
+Phase 2 adds intelligence layers:
 
-------------------------------------
-DATABASE SCHEMA (PHASE 1)
-------------------------------------
+Layer 1: Structured Extraction Engine
+Layer 2: Entity Resolution Engine
+Layer 3: Schema Governance Layer
+Layer 4: Knowledge Query Layer
+Layer 5: Search + Embeddings Layer
 
-Messages:
-- id (UUID or serial)
-- conversation_id (string)
-- role (string)
-- content (text)
-- timestamp (ISO 8601)
+Each layer must be modular.
 
-Entities:
-- id (UUID or serial)
-- conversation_id
-- name (string)
-- type (string: Company / Person / Event / Concept / Metric / Other)
-- aliases_json (JSON array)
-- tags_json (JSON array)
-- created_at
+------------------------------------------------------------
+1) STRUCTURED LLM EXTRACTION (MANDATORY)
+------------------------------------------------------------
 
-Facts:
-- id
-- conversation_id
-- subject_entity_id
-- predicate (string)
-- object_value (string)
-- confidence (float, default 1.0)
-- source_message_ids_json (JSON array)
-- created_at
+Replace simple regex or naive LLM output with:
 
-Relations:
-- id
-- conversation_id
-- from_entity_id
-- relation_type (string)
-- to_entity_id
-- qualifiers_json (JSON object)
-- source_message_ids_json (JSON array)
-- created_at
+- Strict JSON schema enforced extraction.
+- Use Pydantic or JSON Schema validation.
+- Extraction must occur in two passes:
 
-------------------------------------
-TECH STACK
-------------------------------------
+Pass A: Raw structured extraction
+Pass B: Validation + normalization pass
 
-Backend:
-- Python 3.11+
-- FastAPI
-- SQLAlchemy ORM
-- Alembic migrations
-- PostgreSQL
-- Pydantic models for validation
+Extraction must produce:
+{
+  entities: [...],
+  facts: [...],
+  relations: [...]
+}
 
-Frontend:
-- Next.js (TypeScript)
-- Basic pages only:
-    /conversation
-    /database
-    /explain
+Constraints:
+- Entities must include canonical_name and type.
+- Facts must reference entity names (resolved later).
+- Relations must include directional semantics.
 
-Dev Environment:
-- Docker Compose for Postgres
-- Backend + frontend run locally
-- Clear README setup instructions
+Extraction must be deterministic:
+- Same input → same structured output (within reason).
+- Avoid hallucinated entities not present in text.
 
-------------------------------------
-ARCHITECTURE REQUIREMENTS
-------------------------------------
+------------------------------------------------------------
+2) ENTITY RESOLUTION ENGINE
+------------------------------------------------------------
 
-- Use clean folder structure:
-    backend/
-        app/
-            models/
-            schemas/
-            routers/
-            services/
-            extraction/
-            db/
-    frontend/
+This is critical.
 
-- Extraction must be separated into:
+Goal:
+Avoid duplicate entities like:
+- "Apple"
+- "Apple Inc."
+- "AAPL"
+
+Add:
+entity_resolution/
+    resolver.py
+
+Resolution steps:
+1) Exact name match
+2) Alias match
+3) Embedding similarity threshold
+4) Optional LLM-assisted disambiguation
+
+Store:
+- canonical_name
+- known_aliases
+- first_seen_timestamp
+- confidence score
+
+All entity merges must log:
+- merged_entity_ids
+- reason_for_merge
+- timestamp
+
+Transparency is mandatory.
+
+------------------------------------------------------------
+3) SCHEMA GOVERNANCE LAYER
+------------------------------------------------------------
+
+Phase 1 allowed arbitrary types.
+
+Phase 2 introduces controlled type system.
+
+Entity Types (v1 fixed list):
+- Company
+- Person
+- Event
+- Concept
+- Metric
+- Location
+- Other
+
+Fact Predicate Guidelines:
+- Must be normalized (snake_case)
+- Avoid natural language sentences
+- Examples:
+    reported_revenue
+    experienced_stock_change
+    impacted_by
+    has_market_cap
+
+Implement:
+schema/
+    entity_types.py
+    predicate_registry.py
+
+Predicate registry should:
+- Store known predicates
+- Track frequency
+- Prevent explosion of near-duplicate predicates
+
+------------------------------------------------------------
+4) MULTI-CONVERSATION KNOWLEDGE ACCUMULATION
+------------------------------------------------------------
+
+Phase 2 enables:
+- Multiple conversations contributing to same entity graph.
+
+Add:
+- Global entity table (not per conversation only)
+- Conversation-entity linking table
+
+Implement:
+conversation_entities
+conversation_facts
+conversation_relations
+
+Allow:
+- Query by conversation
+- Query global graph
+
+This is the first step toward persistent AI memory.
+
+------------------------------------------------------------
+5) SEARCH + EMBEDDINGS LAYER
+------------------------------------------------------------
+
+Add embeddings for:
+- Entities
+- Facts
+
+Use:
+- text-embedding model
+- Store vectors in Postgres (pgvector)
+
+Capabilities:
+- Semantic search
+- Find related entities
+- Suggest potential relation candidates
+
+Add endpoint:
+GET /search?q=...
+
+Must return:
+- Matched entities
+- Matched facts
+- Similarity score
+
+------------------------------------------------------------
+6) KNOWLEDGE QUERY ENDPOINTS
+------------------------------------------------------------
+
+Add:
+
+GET /entities/{id}/graph
+Returns:
+{
+  entity,
+  related_entities,
+  outgoing_relations,
+  incoming_relations,
+  supporting_facts
+}
+
+GET /entities/{id}/timeline
+Returns:
+- Facts ordered by timestamp
+- Related events
+
+This proves structured reasoning over stored knowledge.
+
+------------------------------------------------------------
+7) EXPLAINABILITY IMPROVEMENTS
+------------------------------------------------------------
+
+Every fact and relation must support:
+
+GET /facts/{id}/explain
+Returns:
+{
+  structured_record,
+  source_messages,
+  extraction_prompt_version,
+  resolution_steps
+}
+
+Track:
+- extractor_version
+- resolver_version
+
+This is critical for future investor demos.
+
+------------------------------------------------------------
+DIRECTORY STRUCTURE (UPDATED)
+------------------------------------------------------------
+
+backend/app/
+
     extraction/
         extractor_interface.py
-        rule_based_extractor.py
+        llm_extractor.py
+        validation.py
 
-- Create an Extractor interface so we can later replace it with an LLM-based extractor.
+    entity_resolution/
+        resolver.py
+        similarity.py
 
-- All API endpoints must:
-    - Validate inputs
-    - Return consistent JSON responses
-    - Use proper status codes
+    schema/
+        entity_types.py
+        predicate_registry.py
 
-------------------------------------
-PHASE 1 ENDPOINTS
-------------------------------------
+    search/
+        embedding_service.py
+        search_service.py
 
-POST   /conversations/{conversation_id}/messages
-GET    /conversations/{conversation_id}/messages
+    graph/
+        graph_service.py
 
-POST   /conversations/{conversation_id}/extract
+------------------------------------------------------------
+TECH REQUIREMENTS
+------------------------------------------------------------
 
-GET    /conversations/{conversation_id}/entities
-GET    /conversations/{conversation_id}/facts
-GET    /conversations/{conversation_id}/relations
+Backend:
+- FastAPI
+- SQLAlchemy
+- Alembic
+- pgvector extension
 
-------------------------------------
-EXTRACTION BEHAVIOR (MVP SIMPLIFIED)
-------------------------------------
+Extraction:
+- OpenAI structured output API
+- JSON schema enforcement
+- Retry + validation logic
 
-For Phase 1, implement simple deterministic extraction:
-- Detect stock tickers via regex (e.g. AAPL, TSLA)
-- Detect percentage changes
-- Detect simple patterns like:
-    "[Company] reported [metric]"
-    "[Event] impacted [Company]"
+All services:
+- Type hints required
+- Logging required
+- Errors must be explicit
+- No silent failures
 
-This is just to prove architecture.
-Design the system so LLM-based extraction can be dropped in later.
+------------------------------------------------------------
+DATA INTEGRITY RULES
+------------------------------------------------------------
 
-------------------------------------
-IMPORTANT CONSTRAINTS
-------------------------------------
+- Never delete entities during merge.
+- Instead mark merged_into_id.
+- Keep full audit trail.
+- Never allow orphaned foreign keys.
+- All merges must be reversible.
 
-- No microservices.
-- No GraphQL.
-- No unnecessary abstractions.
-- No premature optimization.
-- Keep code readable and production-quality.
-- Add docstrings and type hints.
+------------------------------------------------------------
+PERFORMANCE CONSTRAINTS
+------------------------------------------------------------
 
-------------------------------------
-DEFINITION OF DONE
-------------------------------------
+- Extraction async
+- Resolution batched
+- Search indexed
+- Use proper DB indexing on:
+    conversation_id
+    entity_id
+    relation_type
+    predicate
 
-When complete, we must be able to:
+------------------------------------------------------------
+DEFINITION OF DONE (PHASE 2)
+------------------------------------------------------------
 
-1) Paste a conversation about 3–5 stocks.
-2) Store the messages.
-3) Run extraction.
-4) See:
-    - Entities populated
-    - Facts populated
-    - Relations populated
-5) Click any fact/relation and see which messages produced it.
+We can:
 
-------------------------------------
-OUTPUT REQUIREMENTS
-------------------------------------
+1) Input multiple stock research conversations.
+2) System merges AAPL/Apple automatically.
+3) Search “AI supply chain impact”.
+4) See connected companies + events.
+5) View entity graph.
+6) Click any fact → see explanation trail.
+7) System maintains clean predicate vocabulary.
 
-When generating code:
-- Specify which files are created or modified.
-- Provide full file contents.
-- Ensure imports are correct.
-- Ensure migrations are included.
-- Ensure docker-compose runs without errors.
-- Ensure backend starts with:
-    uvicorn app.main:app --reload
+Phase 2 success metric:
+The database looks intelligent, not just extracted.
 
-------------------------------------
-PROJECT PHILOSOPHY
-------------------------------------
+------------------------------------------------------------
+PROJECT PHILOSOPHY (PHASE 2)
+------------------------------------------------------------
 
-Librarian is about:
-- Structured accumulation of AI knowledge
-- Transparent state
-- Inspectable memory
+Librarian is evolving from:
+"Structured logging"
 
-Everything built in Phase 1 must reinforce:
-    "AI should not just answer. It should accumulate structured knowledge."
+to:
+"Structured cognition."
 
-Now begin implementing Phase 1 of Librarian MVP.
+The system must:
+- Improve coherence over time.
+- Reduce duplication.
+- Maintain semantic integrity.
+- Remain transparent.
+
+Every architectural decision must reinforce:
+
+AI should not just answer.
+It should accumulate structured, evolving knowledge.
+
+Now begin implementing Phase 2.

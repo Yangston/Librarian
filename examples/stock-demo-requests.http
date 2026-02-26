@@ -38,11 +38,27 @@ Content-Type: application/json
 ### 2) Run extraction
 POST {{baseUrl}}/conversations/{{conversationId}}/extract
 
+### 2b) Live chat turn (persists both sides + optional extraction)
+POST {{baseUrl}}/conversations/{{conversationId}}/chat/turn
+Content-Type: application/json
+
+{
+  "content": "Compare AAPL and NVDA exposure to AI supply chain disruption.",
+  "auto_extract": true,
+  "system_prompt": "You are a concise stock research assistant."
+}
+
 ### 3) Query transparent database views
 GET {{baseUrl}}/conversations/{{conversationId}}/messages
 
 ###
 GET {{baseUrl}}/conversations/{{conversationId}}/entities
+
+###
+GET {{baseUrl}}/conversations/{{conversationId}}/entity-merges
+
+###
+GET {{baseUrl}}/schema/predicates
 
 ###
 GET {{baseUrl}}/conversations/{{conversationId}}/facts
@@ -55,4 +71,3 @@ GET {{baseUrl}}/conversations/{{conversationId}}/facts/1/explain
 
 ###
 GET {{baseUrl}}/conversations/{{conversationId}}/relations/1/explain
-

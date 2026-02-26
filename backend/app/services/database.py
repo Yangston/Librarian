@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.entity import Entity
+from app.models.entity_merge_audit import EntityMergeAudit
 from app.models.fact import Fact
 from app.models.relation import Relation
 from app.schemas.fact import FactRead, FactWithSubjectRead
@@ -17,6 +18,17 @@ def list_entities(db: Session, conversation_id: str) -> list[Entity]:
         select(Entity)
         .where(Entity.conversation_id == conversation_id)
         .order_by(Entity.type.asc(), Entity.name.asc(), Entity.id.asc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def list_entity_merge_audits(db: Session, conversation_id: str) -> list[EntityMergeAudit]:
+    """List entity merge audits for a conversation."""
+
+    stmt = (
+        select(EntityMergeAudit)
+        .where(EntityMergeAudit.conversation_id == conversation_id)
+        .order_by(EntityMergeAudit.id.asc())
     )
     return list(db.scalars(stmt).all())
 

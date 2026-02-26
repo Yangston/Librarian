@@ -25,6 +25,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.db.session import SessionLocal
 from app.models.entity import Entity
+from app.models.entity_merge_audit import EntityMergeAudit
 from app.models.fact import Fact
 from app.models.message import Message
 from app.models.relation import Relation
@@ -44,8 +45,8 @@ def build_demo_messages() -> list[MessageCreate]:
         ("user", "AAPL reported iPhone revenue strength and the stock rose 3.2% after the call."),
         ("assistant", "TSLA reported vehicle deliveries and shares moved -1.4% in late trading."),
         ("user", "Fed rate decision impacted NVDA as traders reassessed AI valuations."),
-        ("assistant", "Supply chain disruption impacted AAPL and management flagged margin pressure."),
-        ("user", "MSFT reported cloud revenue acceleration while AMZN gained 2.1%."),
+        ("assistant", "Supply chain disruption impacted Apple Inc. and management flagged margin pressure."),
+        ("user", "Apple faced margin pressure while MSFT reported cloud revenue acceleration and AMZN gained 2.1%."),
     ]
     return [
         MessageCreate(role=role, content=content, timestamp=base.replace(minute=base.minute + idx))
@@ -59,6 +60,7 @@ def reset_conversation(db, conversation_id: str) -> None:
     db.execute(delete(Relation).where(Relation.conversation_id == conversation_id))
     db.execute(delete(Fact).where(Fact.conversation_id == conversation_id))
     db.execute(delete(Entity).where(Entity.conversation_id == conversation_id))
+    db.execute(delete(EntityMergeAudit).where(EntityMergeAudit.conversation_id == conversation_id))
     db.execute(delete(Message).where(Message.conversation_id == conversation_id))
     db.commit()
 
@@ -100,10 +102,12 @@ def main() -> None:
     print(f"entities_created={extraction_result.entities_created}")
     print(f"facts_created={extraction_result.facts_created}")
     print(f"relations_created={extraction_result.relations_created}")
+    print("phase2_note=check /entities for canonical_name + merged_into_id and /entity-merges for audit trail")
     print()
     print("Inspect:")
     print(f"  GET /conversations/{conversation_id}/messages")
     print(f"  GET /conversations/{conversation_id}/entities")
+    print(f"  GET /conversations/{conversation_id}/entity-merges")
     print(f"  GET /conversations/{conversation_id}/facts")
     print(f"  GET /conversations/{conversation_id}/relations")
 
