@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any, Protocol
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -16,6 +18,8 @@ from app.schemas.chat import LiveChatTurnResult
 from app.schemas.message import MessageCreate, MessageRead
 from app.services.extraction import run_extraction_for_conversation
 from app.services.messages import create_messages, list_messages
+
+logger = logging.getLogger(__name__)
 
 
 class LiveChatError(RuntimeError):
@@ -101,37 +105,83 @@ def run_live_chat_turn(
 ) -> LiveChatTurnResult:
     """Persist a user turn, generate assistant reply, and optionally extract."""
 
+    total_started = perf_counter()
     trimmed_content = user_content.strip()
     if not trimmed_content:
         raise LiveChatError("Message content cannot be empty.")
+    try:
+        started = perf_counter()
+        created_user = create_messages(
+            db,
+            conversation_id,
+            [MessageCreate(role="user", content=trimmed_content)],
+        )[0]
+        persist_user_ms = (perf_counter() - started) * 1000.0
 
-    created_user = create_messages(
-        db,
-        conversation_id,
-        [MessageCreate(role="user", content=trimmed_content)],
-    )[0]
+        started = perf_counter()
+        messages_for_model = _build_chat_messages(
+            list_messages(db, conversation_id),
+            system_prompt=system_prompt,
+        )
+        build_model_input_ms = (perf_counter() - started) * 1000.0
 
-    messages_for_model = _build_chat_messages(
-        list_messages(db, conversation_id),
-        system_prompt=system_prompt,
-    )
-    assistant_content = (chat_client or get_default_chat_client()).complete(messages_for_model)
-    created_assistant = create_messages(
-        db,
-        conversation_id,
-        [MessageCreate(role="assistant", content=assistant_content)],
-    )[0]
+        started = perf_counter()
+        assistant_content = (chat_client or get_default_chat_client()).complete(messages_for_model)
+        chat_completion_ms = (perf_counter() - started) * 1000.0
 
-    extraction = None
-    if auto_extract:
-        extraction = run_extraction_for_conversation(db, conversation_id, extractor=extractor)
+        started = perf_counter()
+        created_assistant = create_messages(
+            db,
+            conversation_id,
+            [MessageCreate(role="assistant", content=assistant_content)],
+        )[0]
+        persist_assistant_ms = (perf_counter() - started) * 1000.0
 
-    return LiveChatTurnResult(
-        conversation_id=conversation_id,
-        user_message=MessageRead.model_validate(created_user),
-        assistant_message=MessageRead.model_validate(created_assistant),
-        extraction=extraction,
-    )
+        extraction = None
+        extraction_ms = 0.0
+        if auto_extract:
+            started = perf_counter()
+            extraction = run_extraction_for_conversation(
+                db,
+                conversation_id,
+                extractor=extractor,
+                post_processing_mode="none",
+            )
+            extraction_ms = (perf_counter() - started) * 1000.0
+
+        result = LiveChatTurnResult(
+            conversation_id=conversation_id,
+            user_message=MessageRead.model_validate(created_user),
+            assistant_message=MessageRead.model_validate(created_assistant),
+            extraction=extraction,
+        )
+        logger.info(
+            (
+                "phase2.live_chat_timing conversation_id=%s user_message_id=%s assistant_message_id=%s "
+                "auto_extract=%s model_messages=%d persist_user_ms=%.2f build_model_input_ms=%.2f "
+                "chat_completion_ms=%.2f persist_assistant_ms=%.2f extraction_ms=%.2f total_ms=%.2f"
+            ),
+            conversation_id,
+            result.user_message.id,
+            result.assistant_message.id,
+            auto_extract,
+            len(messages_for_model),
+            persist_user_ms,
+            build_model_input_ms,
+            chat_completion_ms,
+            persist_assistant_ms,
+            extraction_ms,
+            (perf_counter() - total_started) * 1000.0,
+        )
+        return result
+    except Exception:
+        logger.exception(
+            "phase2.live_chat_failed conversation_id=%s auto_extract=%s elapsed_ms=%.2f",
+            conversation_id,
+            auto_extract,
+            (perf_counter() - total_started) * 1000.0,
+        )
+        raise
 
 
 def _build_chat_messages(

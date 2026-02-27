@@ -6,8 +6,11 @@ import { useEffect, useRef, useState } from "react";
 import {
   apiGet,
   apiPost,
+  type ConversationSummaryData,
+  type EntityGraphData,
   type EntityRead,
   type EntityMergeAuditRead,
+  type FactTimelineItem,
   type ExtractionRunResult,
   type FactExplainData,
   type FactWithSubjectRead,
@@ -15,8 +18,10 @@ import {
   type MessageRead,
   type MessagesIngestRequest,
   type PredicateRegistryEntryRead,
+  type ResolutionEventRead,
   type RelationExplainData,
-  type RelationWithEntitiesRead
+  type RelationWithEntitiesRead,
+  type SemanticSearchData
 } from "../lib/api";
 
 type WorkbenchMode = "full" | "database" | "explain" | "live";
@@ -98,6 +103,13 @@ function parsePositiveId(value: string, label: string): number {
     throw new Error(`${label} must be a positive integer.`);
   }
   return parsed;
+}
+
+function formatScore(value: number | null | undefined, digits = 2): string {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "-";
+  }
+  return value.toFixed(digits);
 }
 
 function isHorizontalRuleLine(value: string): boolean {
@@ -450,10 +462,18 @@ export default function LibrarianWorkbench({
   const [messages, setMessages] = useState<MessageRead[]>([]);
   const [entities, setEntities] = useState<EntityRead[]>([]);
   const [entityMerges, setEntityMerges] = useState<EntityMergeAuditRead[]>([]);
+  const [resolutionEvents, setResolutionEvents] = useState<ResolutionEventRead[]>([]);
   const [predicateRegistryEntries, setPredicateRegistryEntries] = useState<PredicateRegistryEntryRead[]>([]);
   const [facts, setFacts] = useState<FactWithSubjectRead[]>([]);
   const [relations, setRelations] = useState<RelationWithEntitiesRead[]>([]);
   const [extractionResult, setExtractionResult] = useState<ExtractionRunResult | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>("Apple supply chain");
+  const [searchConversationScoped, setSearchConversationScoped] = useState<boolean>(true);
+  const [searchResult, setSearchResult] = useState<SemanticSearchData | null>(null);
+  const [conversationSummary, setConversationSummary] = useState<ConversationSummaryData | null>(null);
+  const [entityLookupId, setEntityLookupId] = useState<string>("");
+  const [entityGraph, setEntityGraph] = useState<EntityGraphData | null>(null);
+  const [entityTimeline, setEntityTimeline] = useState<FactTimelineItem[] | null>(null);
   const [lastLiveTurn, setLastLiveTurn] = useState<LiveChatTurnResult | null>(null);
   const [liveTurnPending, setLiveTurnPending] = useState<boolean>(false);
   const [pendingLiveUserText, setPendingLiveUserText] = useState<string | null>(null);
@@ -462,6 +482,7 @@ export default function LibrarianWorkbench({
   const [explainSelection, setExplainSelection] = useState<ExplainSelection>(null);
   const [factExplainId, setFactExplainId] = useState<string>("");
   const [relationExplainId, setRelationExplainId] = useState<string>("");
+  const [globalExplainLookup, setGlobalExplainLookup] = useState<boolean>(false);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("Ready.");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -513,15 +534,17 @@ export default function LibrarianWorkbench({
 
   async function loadDatabase(): Promise<void> {
     const id = requireConversationId();
-    const [entityRows, mergeRows, factRows, relationRows, predicateRows] = await Promise.all([
+    const [entityRows, mergeRows, resolutionRows, factRows, relationRows, predicateRows] = await Promise.all([
       apiGet<EntityRead[]>(`${conversationPath(id)}/entities`),
       apiGet<EntityMergeAuditRead[]>(`${conversationPath(id)}/entity-merges`),
+      apiGet<ResolutionEventRead[]>(`${conversationPath(id)}/resolution-events`),
       apiGet<FactWithSubjectRead[]>(`${conversationPath(id)}/facts`),
       apiGet<RelationWithEntitiesRead[]>(`${conversationPath(id)}/relations`),
       apiGet<PredicateRegistryEntryRead[]>("/schema/predicates")
     ]);
     setEntities(entityRows);
     setEntityMerges(mergeRows);
+    setResolutionEvents(resolutionRows);
     setFacts(factRows);
     setRelations(relationRows);
     setPredicateRegistryEntries(predicateRows);
@@ -629,9 +652,10 @@ export default function LibrarianWorkbench({
     const basePath = conversationPath(freshId);
     const created = await apiPost<MessageRead[]>(`${basePath}/messages`, DEMO_MESSAGES);
     const extract = await apiPost<ExtractionRunResult>(`${basePath}/extract`);
-    const [entityRows, mergeRows, factRows, relationRows, predicateRows] = await Promise.all([
+    const [entityRows, mergeRows, resolutionRows, factRows, relationRows, predicateRows] = await Promise.all([
       apiGet<EntityRead[]>(`${basePath}/entities`),
       apiGet<EntityMergeAuditRead[]>(`${basePath}/entity-merges`),
+      apiGet<ResolutionEventRead[]>(`${basePath}/resolution-events`),
       apiGet<FactWithSubjectRead[]>(`${basePath}/facts`),
       apiGet<RelationWithEntitiesRead[]>(`${basePath}/relations`),
       apiGet<PredicateRegistryEntryRead[]>("/schema/predicates")
@@ -641,12 +665,19 @@ export default function LibrarianWorkbench({
     setExtractionResult(extract);
     setEntities(entityRows);
     setEntityMerges(mergeRows);
+    setResolutionEvents(resolutionRows);
     setFacts(factRows);
     setRelations(relationRows);
     setPredicateRegistryEntries(predicateRows);
+    setConversationSummary(null);
+    setSearchResult(null);
+    setEntityGraph(null);
+    setEntityTimeline(null);
+    setEntityLookupId("");
     setExplainSelection(null);
     setFactExplainId("");
     setRelationExplainId("");
+    setGlobalExplainLookup(false);
     setLastLiveTurn(null);
     setInputMode("live");
   }
@@ -671,19 +702,53 @@ export default function LibrarianWorkbench({
           : "Unified Test Console";
 
   async function loadFactExplainById(factId: number): Promise<void> {
-    const id = requireConversationId();
-    const data = await apiGet<FactExplainData>(`${conversationPath(id)}/facts/${factId}/explain`);
+    const path = globalExplainLookup
+      ? `/facts/${factId}/explain`
+      : `${conversationPath(requireConversationId())}/facts/${factId}/explain`;
+    const data = await apiGet<FactExplainData>(path);
     setExplainSelection({ kind: "fact", data });
     setFactExplainId(String(factId));
   }
 
   async function loadRelationExplainById(relationId: number): Promise<void> {
-    const id = requireConversationId();
-    const data = await apiGet<RelationExplainData>(
-      `${conversationPath(id)}/relations/${relationId}/explain`
-    );
+    const path = globalExplainLookup
+      ? `/relations/${relationId}/explain`
+      : `${conversationPath(requireConversationId())}/relations/${relationId}/explain`;
+    const data = await apiGet<RelationExplainData>(path);
     setExplainSelection({ kind: "relation", data });
     setRelationExplainId(String(relationId));
+  }
+
+  async function runSemanticSearch(): Promise<void> {
+    const query = searchQuery.trim();
+    if (!query) {
+      throw new Error("Search query is required.");
+    }
+    const params = new URLSearchParams();
+    params.set("q", query);
+    params.set("limit", "10");
+    if (searchConversationScoped) {
+      const scopedConversationId = requireConversationId();
+      params.set("conversation_id", scopedConversationId);
+    }
+    const data = await apiGet<SemanticSearchData>(`/search?${params.toString()}`);
+    setSearchResult(data);
+  }
+
+  async function loadConversationSummary(): Promise<void> {
+    const id = requireConversationId();
+    const data = await apiGet<ConversationSummaryData>(`${conversationPath(id)}/summary`);
+    setConversationSummary(data);
+  }
+
+  async function loadEntityKnowledgeViews(entityId: number): Promise<void> {
+    const [graphData, timelineData] = await Promise.all([
+      apiGet<EntityGraphData>(`/entities/${entityId}/graph`),
+      apiGet<FactTimelineItem[]>(`/entities/${entityId}/timeline`)
+    ]);
+    setEntityGraph(graphData);
+    setEntityTimeline(timelineData);
+    setEntityLookupId(String(entityId));
   }
 
   return (
@@ -861,6 +926,10 @@ export default function LibrarianWorkbench({
 
         {extractionResult ? (
           <div className="stats">
+            <div className="stat">
+              <span className="statLabel">Extractor Run</span>
+              <strong>{extractionResult.extractor_run_id ?? "-"}</strong>
+            </div>
             <div className="stat">
               <span className="statLabel">Messages Processed</span>
               <strong>{extractionResult.messages_processed}</strong>
@@ -1112,14 +1181,18 @@ export default function LibrarianWorkbench({
               <div className="miniValue">{relations.length}</div>
             </div>
             <div className="miniCard">
+              <div className="miniLabel">Resolution Events</div>
+              <div className="miniValue">{resolutionEvents.length}</div>
+            </div>
+          </div>
+
+          <div className="grid threeStats">
+            <div className="miniCard">
               <div className="miniLabel">Resolver</div>
               <div className="miniValue">
                 {canonicalEntities[0]?.resolver_version ?? entities[0]?.resolver_version ?? "-"}
               </div>
             </div>
-          </div>
-
-          <div className="grid threeStats">
             <div className="miniCard">
               <div className="miniLabel">Predicate Registry</div>
               <div className="miniValue">{predicateRegistryEntries.length}</div>
@@ -1177,18 +1250,20 @@ export default function LibrarianWorkbench({
                 <tr>
                   <th>ID</th>
                   <th>Name</th>
+                  <th>Display</th>
                   <th>Canonical</th>
-                  <th>Type</th>
+                  <th>Type Label</th>
                   <th>Status</th>
                   <th>Resolution</th>
                   <th>Aliases</th>
                   <th>Tags</th>
+                  <th>Updated</th>
                 </tr>
               </thead>
               <tbody>
                 {entities.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="emptyCell">
+                    <td colSpan={9} className="emptyCell">
                       No entities loaded yet.
                     </td>
                   </tr>
@@ -1197,8 +1272,9 @@ export default function LibrarianWorkbench({
                     <tr key={entity.id}>
                       <td>{entity.id}</td>
                       <td>{entity.name}</td>
+                      <td>{entity.display_name || "-"}</td>
                       <td>{entity.canonical_name}</td>
-                      <td>{entity.type}</td>
+                      <td>{entity.type_label || entity.type}</td>
                       <td>
                         {entity.merged_into_id === null
                           ? "canonical"
@@ -1206,11 +1282,12 @@ export default function LibrarianWorkbench({
                       </td>
                       <td>
                         {entity.resolution_reason
-                          ? `${entity.resolution_reason} (${entity.resolution_confidence.toFixed(2)})`
-                          : `canonical (${entity.resolution_confidence.toFixed(2)})`}
+                          ? `${entity.resolution_reason} (${formatScore(entity.resolution_confidence)})`
+                          : `canonical (${formatScore(entity.resolution_confidence)})`}
                       </td>
                       <td>{entity.known_aliases_json.join(", ") || "-"}</td>
                       <td>{entity.tags_json.join(", ") || "-"}</td>
+                      <td>{formatTimestamp(entity.updated_at)}</td>
                     </tr>
                   ))
                 )}
@@ -1258,6 +1335,44 @@ export default function LibrarianWorkbench({
 
           <div className="tableWrap">
             <table className="table mono">
+              <caption>Resolution Events</caption>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Type</th>
+                  <th>Entities</th>
+                  <th>Similarity</th>
+                  <th>Rationale</th>
+                  <th>Source Messages</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resolutionEvents.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="emptyCell">
+                      No resolution events recorded for this conversation.
+                    </td>
+                  </tr>
+                ) : (
+                  resolutionEvents.map((event) => (
+                    <tr key={event.id}>
+                      <td>{event.id}</td>
+                      <td>{event.event_type}</td>
+                      <td>{event.entity_ids_json.join(", ") || "-"}</td>
+                      <td>{formatScore(event.similarity_score)}</td>
+                      <td>{event.rationale}</td>
+                      <td>{event.source_message_ids_json.join(", ") || "-"}</td>
+                      <td>{formatTimestamp(event.created_at)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="tableWrap">
+            <table className="table mono">
               <caption>Facts</caption>
               <thead>
                 <tr>
@@ -1265,6 +1380,9 @@ export default function LibrarianWorkbench({
                   <th>Subject</th>
                   <th>Predicate</th>
                   <th>Object</th>
+                  <th>Scope</th>
+                  <th>Confidence</th>
+                  <th>Extractor Run</th>
                   <th>Sources</th>
                   <th>Explain</th>
                 </tr>
@@ -1272,7 +1390,7 @@ export default function LibrarianWorkbench({
               <tbody>
                 {facts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="emptyCell">
+                    <td colSpan={9} className="emptyCell">
                       No facts loaded yet.
                     </td>
                   </tr>
@@ -1283,6 +1401,9 @@ export default function LibrarianWorkbench({
                       <td>{fact.subject_entity_name}</td>
                       <td>{fact.predicate}</td>
                       <td>{fact.object_value}</td>
+                      <td>{fact.scope}</td>
+                      <td>{formatScore(fact.confidence)}</td>
+                      <td>{fact.extractor_run_id ?? "-"}</td>
                       <td>{fact.source_message_ids_json.join(", ")}</td>
                       <td>
                         <button
@@ -1314,6 +1435,8 @@ export default function LibrarianWorkbench({
                   <th>From</th>
                   <th>Relation</th>
                   <th>To</th>
+                  <th>Scope</th>
+                  <th>Extractor Run</th>
                   <th>Sources</th>
                   <th>Explain</th>
                 </tr>
@@ -1321,7 +1444,7 @@ export default function LibrarianWorkbench({
               <tbody>
                 {relations.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="emptyCell">
+                    <td colSpan={8} className="emptyCell">
                       No relations loaded yet.
                     </td>
                   </tr>
@@ -1332,6 +1455,8 @@ export default function LibrarianWorkbench({
                       <td>{relation.from_entity_name}</td>
                       <td>{relation.relation_type}</td>
                       <td>{relation.to_entity_name}</td>
+                      <td>{relation.scope}</td>
+                      <td>{relation.extractor_run_id ?? "-"}</td>
                       <td>{relation.source_message_ids_json.join(", ")}</td>
                       <td>
                         <button
@@ -1356,6 +1481,264 @@ export default function LibrarianWorkbench({
         </section>
       ) : null}
 
+      {showDatabase ? (
+        <section className="panel grid">
+          <div className="sectionHead">
+            <h2 style={{ margin: 0 }}>Phase 2 Advanced Inspector</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Search, summary, graph, and timeline views from the Phase 2 knowledge endpoints.
+            </p>
+          </div>
+
+          <div className="toolbar">
+            <label className="field grow">
+              <span className="label">Semantic Search Query</span>
+              <input
+                className="input"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Apple supply chain risk"
+              />
+            </label>
+            <label className="toggleRow">
+              <input
+                type="checkbox"
+                checked={searchConversationScoped}
+                onChange={(event) => setSearchConversationScoped(event.target.checked)}
+              />
+              <span>Scope search to current conversation</span>
+            </label>
+            <button
+              className="button"
+              type="button"
+              disabled={busyLabel !== null}
+              onClick={() => {
+                void runTask("Run semantic search", runSemanticSearch);
+              }}
+            >
+              GET Search
+            </button>
+            <button
+              className="button ghost"
+              type="button"
+              disabled={busyLabel !== null}
+              onClick={() => {
+                void runTask("Load conversation summary", loadConversationSummary);
+              }}
+            >
+              GET Summary
+            </button>
+          </div>
+
+          <div className="toolbar">
+            <label className="field compact">
+              <span className="label">Entity ID</span>
+              <input
+                className="input mono"
+                value={entityLookupId}
+                onChange={(event) => setEntityLookupId(event.target.value)}
+                placeholder="1"
+                inputMode="numeric"
+              />
+            </label>
+            <button
+              className="button ghost"
+              type="button"
+              disabled={busyLabel !== null}
+              onClick={() => {
+                void runTask("Load entity graph/timeline", async () => {
+                  await loadEntityKnowledgeViews(parsePositiveId(entityLookupId, "Entity ID"));
+                });
+              }}
+            >
+              GET Graph + Timeline
+            </button>
+            <button
+              className="button ghost"
+              type="button"
+              disabled={busyLabel !== null || canonicalEntities.length === 0}
+              onClick={() => {
+                const fallbackEntityId = canonicalEntities[0]?.id;
+                if (!fallbackEntityId) {
+                  return;
+                }
+                void runTask("Load canonical entity graph/timeline", async () => {
+                  await loadEntityKnowledgeViews(fallbackEntityId);
+                });
+              }}
+            >
+              Load First Canonical
+            </button>
+          </div>
+
+          {searchResult ? (
+            <div className="grid two">
+              <div className="tableWrap">
+                <table className="table mono">
+                  <caption>Search Entity Hits ({searchResult.entities.length})</caption>
+                  <thead>
+                    <tr>
+                      <th>Similarity</th>
+                      <th>ID</th>
+                      <th>Canonical</th>
+                      <th>Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchResult.entities.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="emptyCell">
+                          No entity hits.
+                        </td>
+                      </tr>
+                    ) : (
+                      searchResult.entities.map((hit) => (
+                        <tr key={`entity-hit-${hit.entity.id}`}>
+                          <td>{formatScore(hit.similarity, 3)}</td>
+                          <td>{hit.entity.id}</td>
+                          <td>{hit.entity.canonical_name}</td>
+                          <td>{hit.entity.type_label || hit.entity.type}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="tableWrap">
+                <table className="table mono">
+                  <caption>Search Fact Hits ({searchResult.facts.length})</caption>
+                  <thead>
+                    <tr>
+                      <th>Similarity</th>
+                      <th>ID</th>
+                      <th>Fact</th>
+                      <th>Scope</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchResult.facts.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="emptyCell">
+                          No fact hits.
+                        </td>
+                      </tr>
+                    ) : (
+                      searchResult.facts.map((hit) => (
+                        <tr key={`fact-hit-${hit.fact.id}`}>
+                          <td>{formatScore(hit.similarity, 3)}</td>
+                          <td>{hit.fact.id}</td>
+                          <td>
+                            {hit.fact.subject_entity_name} {hit.fact.predicate} {hit.fact.object_value}
+                          </td>
+                          <td>{hit.fact.scope}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {conversationSummary ? (
+            <div className="grid">
+              <div className="grid threeStats">
+                <div className="miniCard">
+                  <div className="miniLabel">Summary Conversation</div>
+                  <div className="miniValue">{conversationSummary.conversation_id}</div>
+                </div>
+                <div className="miniCard">
+                  <div className="miniLabel">Key Entities</div>
+                  <div className="miniValue">{conversationSummary.key_entities.length}</div>
+                </div>
+                <div className="miniCard">
+                  <div className="miniLabel">Relation Clusters</div>
+                  <div className="miniValue">{conversationSummary.relation_clusters.length}</div>
+                </div>
+              </div>
+              <div className="grid two">
+                <div className="panel inset">
+                  <h3 className="subhead">Schema Changes Triggered</h3>
+                  <div className="mono">
+                    <div>
+                      nodes:{" "}
+                      {conversationSummary.schema_changes_triggered.node_labels.join(", ") || "-"}
+                    </div>
+                    <div>
+                      fields:{" "}
+                      {conversationSummary.schema_changes_triggered.field_labels.join(", ") || "-"}
+                    </div>
+                    <div>
+                      relations:{" "}
+                      {conversationSummary.schema_changes_triggered.relation_labels.join(", ") || "-"}
+                    </div>
+                  </div>
+                </div>
+                <div className="panel inset">
+                  <h3 className="subhead">Relation Clusters</h3>
+                  {conversationSummary.relation_clusters.length === 0 ? (
+                    <p className="muted" style={{ margin: 0 }}>
+                      No relation clusters available.
+                    </p>
+                  ) : (
+                    <ul className="list mono">
+                      {conversationSummary.relation_clusters.map((cluster) => (
+                        <li key={`cluster-${cluster.relation_label}`}>
+                          {cluster.relation_label} ({cluster.relation_count}) -{" "}
+                          {cluster.sample_edges.join("; ") || "no samples"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {entityGraph ? (
+            <div className="grid two">
+              <div className="panel inset">
+                <h3 className="subhead">
+                  Entity Graph: {entityGraph.entity.canonical_name} (#{entityGraph.entity.id})
+                </h3>
+                <div className="mono">
+                  <div>related entities: {entityGraph.related_entities.length}</div>
+                  <div>outgoing: {entityGraph.outgoing_relations.length}</div>
+                  <div>incoming: {entityGraph.incoming_relations.length}</div>
+                  <div>supporting facts: {entityGraph.supporting_facts.length}</div>
+                </div>
+                {entityGraph.related_entities.length > 0 ? (
+                  <ul className="list mono">
+                    {entityGraph.related_entities.map((related) => (
+                      <li key={`related-${related.id}`}>
+                        #{related.id} {related.canonical_name}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <div className="panel inset">
+                <h3 className="subhead">Entity Timeline</h3>
+                {!entityTimeline || entityTimeline.length === 0 ? (
+                  <p className="muted" style={{ margin: 0 }}>
+                    No timeline facts available.
+                  </p>
+                ) : (
+                  <ul className="list mono">
+                    {entityTimeline.map((item) => (
+                      <li key={`timeline-${item.fact.id}`}>
+                        {item.timestamp ? formatTimestamp(item.timestamp) : "no timestamp"}:{" "}
+                        {item.fact.predicate} = {item.fact.object_value}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {showExplainTools ? (
         <section className="panel grid">
           <div className="sectionHead">
@@ -1366,6 +1749,14 @@ export default function LibrarianWorkbench({
           </div>
 
           <div className="toolbar">
+            <label className="toggleRow">
+              <input
+                type="checkbox"
+                checked={globalExplainLookup}
+                onChange={(event) => setGlobalExplainLookup(event.target.checked)}
+              />
+              <span>Use global explain endpoints (/facts/:id or /relations/:id)</span>
+            </label>
             <label className="field compact">
               <span className="label">Fact ID</span>
               <input
@@ -1423,6 +1814,20 @@ export default function LibrarianWorkbench({
                     {explainSelection.data.fact.predicate} {explainSelection.data.fact.object_value}
                   </strong>
                 </div>
+                <div className="grid threeStats">
+                  <div className="miniCard">
+                    <div className="miniLabel">Extractor Run</div>
+                    <div className="miniValue">{explainSelection.data.extractor_run_id ?? "-"}</div>
+                  </div>
+                  <div className="miniCard">
+                    <div className="miniLabel">Schema Status</div>
+                    <div className="miniValue">{explainSelection.data.schema_canonicalization.status}</div>
+                  </div>
+                  <div className="miniCard">
+                    <div className="miniLabel">Resolution Events</div>
+                    <div className="miniValue">{explainSelection.data.resolution_events.length}</div>
+                  </div>
+                </div>
                 <div className="grid two">
                   <div className="panel inset">
                     <h3 className="subhead">Snippets</h3>
@@ -1452,6 +1857,41 @@ export default function LibrarianWorkbench({
                         </article>
                       ))}
                     </div>
+                  </div>
+                </div>
+                <div className="grid two">
+                  <div className="panel inset">
+                    <h3 className="subhead">Schema Canonicalization</h3>
+                    <div className="mono">
+                      <div>table: {explainSelection.data.schema_canonicalization.registry_table}</div>
+                      <div>observed: {explainSelection.data.schema_canonicalization.observed_label}</div>
+                      <div>
+                        canonical:{" "}
+                        {explainSelection.data.schema_canonicalization.canonical_label ??
+                          "(none)"}
+                      </div>
+                      <div>
+                        canonical id:{" "}
+                        {explainSelection.data.schema_canonicalization.canonical_id ?? "-"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="panel inset">
+                    <h3 className="subhead">Resolution Events</h3>
+                    {explainSelection.data.resolution_events.length === 0 ? (
+                      <p className="muted" style={{ margin: 0 }}>
+                        No related resolution events found.
+                      </p>
+                    ) : (
+                      <ul className="list mono">
+                        {explainSelection.data.resolution_events.map((event) => (
+                          <li key={event.id}>
+                            #{event.id} {event.event_type} entities[{event.entity_ids_json.join(", ")}]{" "}
+                            sim={formatScore(event.similarity_score)} rationale={event.rationale}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1467,6 +1907,20 @@ export default function LibrarianWorkbench({
                     {explainSelection.data.relation.to_entity_name}
                   </strong>
                 </div>
+                <div className="grid threeStats">
+                  <div className="miniCard">
+                    <div className="miniLabel">Extractor Run</div>
+                    <div className="miniValue">{explainSelection.data.extractor_run_id ?? "-"}</div>
+                  </div>
+                  <div className="miniCard">
+                    <div className="miniLabel">Schema Status</div>
+                    <div className="miniValue">{explainSelection.data.schema_canonicalization.status}</div>
+                  </div>
+                  <div className="miniCard">
+                    <div className="miniLabel">Resolution Events</div>
+                    <div className="miniValue">{explainSelection.data.resolution_events.length}</div>
+                  </div>
+                </div>
                 <div className="grid two">
                   <div className="panel inset">
                     <h3 className="subhead">Snippets</h3>
@@ -1496,6 +1950,41 @@ export default function LibrarianWorkbench({
                         </article>
                       ))}
                     </div>
+                  </div>
+                </div>
+                <div className="grid two">
+                  <div className="panel inset">
+                    <h3 className="subhead">Schema Canonicalization</h3>
+                    <div className="mono">
+                      <div>table: {explainSelection.data.schema_canonicalization.registry_table}</div>
+                      <div>observed: {explainSelection.data.schema_canonicalization.observed_label}</div>
+                      <div>
+                        canonical:{" "}
+                        {explainSelection.data.schema_canonicalization.canonical_label ??
+                          "(none)"}
+                      </div>
+                      <div>
+                        canonical id:{" "}
+                        {explainSelection.data.schema_canonicalization.canonical_id ?? "-"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="panel inset">
+                    <h3 className="subhead">Resolution Events</h3>
+                    {explainSelection.data.resolution_events.length === 0 ? (
+                      <p className="muted" style={{ margin: 0 }}>
+                        No related resolution events found.
+                      </p>
+                    ) : (
+                      <ul className="list mono">
+                        {explainSelection.data.resolution_events.map((event) => (
+                          <li key={event.id}>
+                            #{event.id} {event.event_type} entities[{event.entity_ids_json.join(", ")}]{" "}
+                            sim={formatScore(event.similarity_score)} rationale={event.rationale}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 </div>
               </div>

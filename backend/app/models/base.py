@@ -25,3 +25,13 @@ class CreatedAtMixin:
         nullable=False,
     )
 
+
+class UpdatedAtMixin:
+    """Updated-at timestamp mixin."""
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

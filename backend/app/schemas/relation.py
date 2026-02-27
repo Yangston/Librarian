@@ -15,8 +15,10 @@ class RelationRead(BaseModel):
     from_entity_id: int
     relation_type: str
     to_entity_id: int
+    scope: str
     qualifiers_json: dict[str, object]
     source_message_ids_json: list[int]
+    extractor_run_id: int | None
     created_at: datetime
 
 
@@ -25,4 +27,3 @@ class RelationWithEntitiesRead(RelationRead):
 
     from_entity_name: str
     to_entity_name: str
-

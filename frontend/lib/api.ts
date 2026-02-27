@@ -26,6 +26,7 @@ export type MessageRead = {
 };
 
 export type ExtractionRunResult = {
+  extractor_run_id: number | null;
   conversation_id: string;
   messages_processed: number;
   entities_created: number;
@@ -50,8 +51,10 @@ export type EntityRead = {
   id: number;
   conversation_id: string;
   name: string;
+  display_name: string;
   canonical_name: string;
   type: string;
+  type_label: string;
   aliases_json: string[];
   known_aliases_json: string[];
   tags_json: string[];
@@ -61,6 +64,7 @@ export type EntityRead = {
   resolver_version: string | null;
   merged_into_id: number | null;
   created_at: string;
+  updated_at: string;
 };
 
 export type EntityMergeAuditRead = {
@@ -92,8 +96,10 @@ export type FactWithSubjectRead = {
   subject_entity_name: string;
   predicate: string;
   object_value: string;
+  scope: string;
   confidence: number;
   source_message_ids_json: number[];
+  extractor_run_id: number | null;
   created_at: string;
 };
 
@@ -105,7 +111,20 @@ export type RelationWithEntitiesRead = {
   relation_type: string;
   to_entity_id: number;
   to_entity_name: string;
+  scope: string;
   qualifiers_json: Record<string, unknown>;
+  source_message_ids_json: number[];
+  extractor_run_id: number | null;
+  created_at: string;
+};
+
+export type ResolutionEventRead = {
+  id: number;
+  conversation_id: string;
+  event_type: string;
+  entity_ids_json: number[];
+  similarity_score: number | null;
+  rationale: string;
   source_message_ids_json: number[];
   created_at: string;
 };
@@ -117,16 +136,80 @@ export type SourceMessageEvidence = {
   timestamp: string;
 };
 
+export type SchemaCanonicalizationInfo = {
+  registry_table: string;
+  observed_label: string;
+  canonical_label: string | null;
+  canonical_id: number | null;
+  status: string;
+};
+
 export type FactExplainData = {
   fact: FactWithSubjectRead;
+  extractor_run_id: number | null;
   source_messages: SourceMessageEvidence[];
+  resolution_events: ResolutionEventRead[];
+  schema_canonicalization: SchemaCanonicalizationInfo;
   snippets: string[];
 };
 
 export type RelationExplainData = {
   relation: RelationWithEntitiesRead;
+  extractor_run_id: number | null;
   source_messages: SourceMessageEvidence[];
+  resolution_events: ResolutionEventRead[];
+  schema_canonicalization: SchemaCanonicalizationInfo;
   snippets: string[];
+};
+
+export type EntitySearchHit = {
+  entity: EntityRead;
+  similarity: number;
+};
+
+export type FactSearchHit = {
+  fact: FactWithSubjectRead;
+  similarity: number;
+};
+
+export type SemanticSearchData = {
+  query: string;
+  conversation_id: string | null;
+  entities: EntitySearchHit[];
+  facts: FactSearchHit[];
+};
+
+export type RelationCluster = {
+  relation_label: string;
+  relation_count: number;
+  sample_edges: string[];
+};
+
+export type ConversationSchemaChanges = {
+  node_labels: string[];
+  field_labels: string[];
+  relation_labels: string[];
+};
+
+export type ConversationSummaryData = {
+  conversation_id: string;
+  key_entities: EntityRead[];
+  key_facts: FactWithSubjectRead[];
+  schema_changes_triggered: ConversationSchemaChanges;
+  relation_clusters: RelationCluster[];
+};
+
+export type EntityGraphData = {
+  entity: EntityRead;
+  outgoing_relations: RelationWithEntitiesRead[];
+  incoming_relations: RelationWithEntitiesRead[];
+  related_entities: EntityRead[];
+  supporting_facts: FactWithSubjectRead[];
+};
+
+export type FactTimelineItem = {
+  fact: FactWithSubjectRead;
+  timestamp: string | null;
 };
 
 type ApiErrorPayload = {

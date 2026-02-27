@@ -6,6 +6,8 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Protocol
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -15,10 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.extraction.extractor_interface import ExtractorInterface
 from app.extraction.types import ExtractedEntity, ExtractedFact, ExtractedRelation, ExtractionResult
 from app.models.message import Message
-from app.schema.entity_types import ENTITY_TYPE_VALUES, normalize_entity_type
 
-ALLOWED_ENTITY_TYPES = set(ENTITY_TYPE_VALUES)
-_ENTITY_TYPE_VALUES = sorted(ENTITY_TYPE_VALUES)
 _EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
     "name": "librarian_extraction",
     "strict": True,
@@ -33,12 +32,13 @@ _EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
                     "additionalProperties": False,
                     "properties": {
                         "name": {"type": "string"},
-                        "type": {"type": "string", "enum": _ENTITY_TYPE_VALUES},
+                        "type_label": {"type": ["string", "null"]},
                         "aliases": {"type": "array", "items": {"type": "string"}},
                         "tags": {"type": "array", "items": {"type": "string"}},
+                        "confidence": {"type": "number"},
                         "source_message_ids": {"type": "array", "items": {"type": "integer"}},
                     },
-                    "required": ["name", "type", "aliases", "tags", "source_message_ids"],
+                    "required": ["name", "type_label", "aliases", "tags", "confidence", "source_message_ids"],
                 },
             },
             "facts": {
@@ -47,19 +47,17 @@ _EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
                     "type": "object",
                     "additionalProperties": False,
                     "properties": {
-                        "subject_name": {"type": "string"},
-                        "subject_type": {"type": "string", "enum": _ENTITY_TYPE_VALUES},
-                        "predicate": {"type": "string"},
-                        "object_value": {"type": "string"},
+                        "entity_name": {"type": "string"},
+                        "field_label": {"type": "string"},
+                        "value_text": {"type": "string"},
                         "confidence": {"type": "number"},
                         "source_message_ids": {"type": "array", "items": {"type": "integer"}},
                         "snippet": {"type": ["string", "null"]},
                     },
                     "required": [
-                        "subject_name",
-                        "subject_type",
-                        "predicate",
-                        "object_value",
+                        "entity_name",
+                        "field_label",
+                        "value_text",
                         "confidence",
                         "source_message_ids",
                         "snippet",
@@ -72,33 +70,39 @@ _EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
                     "type": "object",
                     "additionalProperties": False,
                     "properties": {
-                        "from_name": {"type": "string"},
-                        "from_type": {"type": "string", "enum": _ENTITY_TYPE_VALUES},
-                        "relation_type": {"type": "string"},
-                        "to_name": {"type": "string"},
-                        "to_type": {"type": "string", "enum": _ENTITY_TYPE_VALUES},
+                        "from_entity": {"type": "string"},
+                        "relation_label": {"type": "string"},
+                        "to_entity": {"type": "string"},
                         "qualifiers": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "properties": {
-                                    "key": {"type": "string"},
-                                    "value": {"type": ["string", "number", "boolean", "null"]},
+                            "anyOf": [
+                                {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "properties": {
+                                            "key": {"type": "string"},
+                                            "value": {"type": ["string", "number", "boolean", "null"]},
+                                        },
+                                        "required": ["key", "value"],
+                                    },
                                 },
-                                "required": ["key", "value"],
-                            },
+                                {
+                                    "type": "object",
+                                    "additionalProperties": {"type": ["string", "number", "boolean", "null"]},
+                                },
+                            ]
                         },
+                        "confidence": {"type": "number"},
                         "source_message_ids": {"type": "array", "items": {"type": "integer"}},
                         "snippet": {"type": ["string", "null"]},
                     },
                     "required": [
-                        "from_name",
-                        "from_type",
-                        "relation_type",
-                        "to_name",
-                        "to_type",
+                        "from_entity",
+                        "relation_label",
+                        "to_entity",
                         "qualifiers",
+                        "confidence",
                         "source_message_ids",
                         "snippet",
                     ],
@@ -107,6 +111,10 @@ _EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
         },
         "required": ["entities", "facts", "relations"],
     },
+}
+LLM_EXTRACTION_PROMPT_VERSION = "phase2.v1"
+_PROMPT_FILES: dict[str, Path] = {
+    "phase2.v1": Path(__file__).resolve().parent / "prompts" / "phase2_v1.txt",
 }
 
 
@@ -143,16 +151,7 @@ class OpenAIChatCompletionsClient:
     ) -> dict[str, Any]:
         """Call OpenAI and return parsed JSON extraction output."""
 
-        system_prompt = (
-            "You extract structured knowledge from conversation messages. "
-            "Return only structured output matching the provided JSON schema.\n"
-            "Goal: produce transparent, auditable records for a relational database.\n"
-            "Be conservative. Only extract supported by text.\n"
-            "Each fact/relation MUST include source_message_ids using provided message IDs.\n"
-            "Entity types must be one of: Company, Person, Event, Concept, Metric, Location, Other.\n"
-            "Prefer short, normalized names and predicates/relation_type values.\n"
-            "Keep snippets short and exact when included."
-        )
+        system_prompt = _get_extraction_system_prompt()
         user_prompt = json.dumps(
             {
                 "task": "Extract entities, facts, and relations from these messages.",
@@ -210,31 +209,44 @@ class OpenAIChatCompletionsClient:
             raise LLMExtractionError("OpenAI returned an unexpected or non-JSON response") from exc
 
 
+@lru_cache(maxsize=8)
+def _get_extraction_system_prompt(version: str = LLM_EXTRACTION_PROMPT_VERSION) -> str:
+    prompt_file = _PROMPT_FILES.get(version)
+    if prompt_file is None:
+        raise LLMExtractionError(f"Extraction prompt version is not registered: {version}")
+    try:
+        prompt_text = prompt_file.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise LLMExtractionError(f"Failed to load extraction prompt file: {prompt_file}") from exc
+    if not prompt_text:
+        raise LLMExtractionError(f"Extraction prompt file is empty: {prompt_file}")
+    return prompt_text
+
+
 class _RawEntity(BaseModel):
     name: str
-    type: str = "Other"
+    type_label: str | None = None
     aliases: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    confidence: float = 0.7
     source_message_ids: list[int] = Field(default_factory=list)
 
 
 class _RawFact(BaseModel):
-    subject_name: str
-    subject_type: str = "Other"
-    predicate: str
-    object_value: str
+    entity_name: str
+    field_label: str
+    value_text: str
     confidence: float = 0.7
     source_message_ids: list[int] = Field(default_factory=list)
     snippet: str | None = None
 
 
 class _RawRelation(BaseModel):
-    from_name: str
-    from_type: str = "Other"
-    relation_type: str
-    to_name: str
-    to_type: str = "Other"
+    from_entity: str
+    relation_label: str
+    to_entity: str
     qualifiers: list["_RawQualifierItem"] | dict[str, Any] = Field(default_factory=list)
+    confidence: float = 0.7
     source_message_ids: list[int] = Field(default_factory=list)
     snippet: str | None = None
 
@@ -255,10 +267,14 @@ class LLMExtractor(ExtractorInterface):
 
     def __init__(self, client: LLMClient) -> None:
         self._client = client
+        self._last_raw_output: dict[str, Any] | None = None
+        self._last_validated_output: dict[str, Any] | None = None
 
     def extract(self, messages: list[Message]) -> ExtractionResult:
         """Extract entities, facts, and relations using an LLM."""
 
+        self._last_raw_output = None
+        self._last_validated_output = None
         serialized_messages = [self._serialize_message(message) for message in messages if message.content.strip()]
         if not serialized_messages:
             return ExtractionResult()
@@ -267,13 +283,14 @@ class LLMExtractor(ExtractorInterface):
             serialized_messages,
             conversation_hints={
                 "message_count": len(serialized_messages),
-                "entity_type_allowlist": sorted(ALLOWED_ENTITY_TYPES),
             },
         )
+        self._last_raw_output = raw_payload if isinstance(raw_payload, dict) else {}
         try:
             validated = _RawExtractionPayload.model_validate(raw_payload)
         except ValidationError as exc:
             raise LLMExtractionError(f"LLM extraction payload failed validation: {exc}") from exc
+        self._last_validated_output = validated.model_dump(mode="json")
 
         valid_message_ids = {m["id"] for m in serialized_messages}
         entity_map: dict[tuple[str, str], ExtractedEntity] = {}
@@ -287,26 +304,31 @@ class LLMExtractor(ExtractorInterface):
             self._ensure_entity(
                 entity_map,
                 name=entity.name,
-                entity_type=entity.type,
+                type_label=entity.type_label,
                 source_message_ids=normalized_source_ids,
+                confidence=entity.confidence,
                 aliases=entity.aliases,
                 tags=entity.tags,
             )
 
         for fact in validated.facts:
-            subject_name = self._clean_text(fact.subject_name)
-            predicate = self._normalize_label(fact.predicate)
-            object_value = self._clean_text(fact.object_value)
+            entity_name = self._clean_text(fact.entity_name)
+            field_label = self._normalize_label(fact.field_label)
+            value_text = self._clean_text(fact.value_text)
             source_ids = self._normalize_source_message_ids(fact.source_message_ids, valid_message_ids)
-            if not (subject_name and predicate and object_value and source_ids):
+            if not (entity_name and field_label and value_text and source_ids):
                 continue
-            subject_type = self._normalize_entity_type(fact.subject_type)
-            self._ensure_entity(entity_map, subject_name, subject_type, source_ids)
+            self._ensure_entity(
+                entity_map,
+                name=entity_name,
+                type_label=None,
+                source_message_ids=source_ids,
+                confidence=fact.confidence,
+            )
             dedupe_key = (
-                subject_name.lower(),
-                subject_type,
-                predicate,
-                object_value.lower(),
+                entity_name.lower(),
+                field_label,
+                value_text.lower(),
                 tuple(source_ids),
             )
             if dedupe_key in seen_facts:
@@ -314,10 +336,9 @@ class LLMExtractor(ExtractorInterface):
             seen_facts.add(dedupe_key)
             facts.append(
                 ExtractedFact(
-                    subject_name=subject_name,
-                    subject_type=subject_type,
-                    predicate=predicate,
-                    object_value=object_value,
+                    entity_name=entity_name,
+                    field_label=field_label,
+                    value_text=value_text,
                     confidence=max(0.0, min(1.0, float(fact.confidence))),
                     source_message_ids=source_ids,
                     snippet=self._clean_snippet(fact.snippet),
@@ -325,27 +346,35 @@ class LLMExtractor(ExtractorInterface):
             )
 
         for relation in validated.relations:
-            from_name = self._clean_text(relation.from_name)
-            to_name = self._clean_text(relation.to_name)
-            relation_type = self._normalize_label(relation.relation_type)
+            from_entity = self._clean_text(relation.from_entity)
+            to_entity = self._clean_text(relation.to_entity)
+            relation_label = self._normalize_label(relation.relation_label)
             source_ids = self._normalize_source_message_ids(relation.source_message_ids, valid_message_ids)
-            if not (from_name and to_name and relation_type and source_ids):
+            if not (from_entity and to_entity and relation_label and source_ids):
                 continue
-            from_type = self._normalize_entity_type(relation.from_type)
-            to_type = self._normalize_entity_type(relation.to_type)
-            self._ensure_entity(entity_map, from_name, from_type, source_ids)
-            self._ensure_entity(entity_map, to_name, to_type, source_ids)
+            self._ensure_entity(
+                entity_map,
+                name=from_entity,
+                type_label=None,
+                source_message_ids=source_ids,
+                confidence=relation.confidence,
+            )
+            self._ensure_entity(
+                entity_map,
+                name=to_entity,
+                type_label=None,
+                source_message_ids=source_ids,
+                confidence=relation.confidence,
+            )
             qualifiers = self._normalize_qualifiers(relation.qualifiers)
             snippet = self._clean_snippet(relation.snippet)
             if snippet and "snippet" not in qualifiers:
                 qualifiers["snippet"] = snippet
             dedupe_qualifiers = {k: v for k, v in qualifiers.items() if k != "snippet"}
             dedupe_key = (
-                from_name.lower(),
-                from_type,
-                relation_type,
-                to_name.lower(),
-                to_type,
+                from_entity.lower(),
+                relation_label,
+                to_entity.lower(),
                 tuple(sorted((k, json.dumps(v, sort_keys=True, default=str)) for k, v in dedupe_qualifiers.items())),
                 tuple(source_ids),
             )
@@ -354,21 +383,36 @@ class LLMExtractor(ExtractorInterface):
             seen_relations.add(dedupe_key)
             relations.append(
                 ExtractedRelation(
-                    from_name=from_name,
-                    from_type=from_type,
-                    relation_type=relation_type,
-                    to_name=to_name,
-                    to_type=to_type,
+                    from_entity=from_entity,
+                    relation_label=relation_label,
+                    to_entity=to_entity,
                     qualifiers=qualifiers,
+                    confidence=max(0.0, min(1.0, float(relation.confidence))),
                     source_message_ids=source_ids,
                     snippet=snippet,
                 )
             )
 
-        entities = sorted(entity_map.values(), key=lambda e: (e.entity_type, e.name.lower()))
-        facts.sort(key=lambda f: (f.subject_name.lower(), f.predicate, f.object_value.lower()))
-        relations.sort(key=lambda r: (r.from_name.lower(), r.relation_type, r.to_name.lower()))
+        entities = sorted(entity_map.values(), key=lambda e: ((e.type_label or ""), e.name.lower()))
+        facts.sort(key=lambda f: (f.entity_name.lower(), f.field_label, f.value_text.lower()))
+        relations.sort(key=lambda r: (r.from_entity.lower(), r.relation_label, r.to_entity.lower()))
         return ExtractionResult(entities=entities, facts=facts, relations=relations)
+
+    @property
+    def prompt_version(self) -> str:
+        return LLM_EXTRACTION_PROMPT_VERSION
+
+    @property
+    def model_name(self) -> str:
+        return str(getattr(self._client, "model", self._client.__class__.__name__))
+
+    @property
+    def last_raw_output(self) -> dict[str, Any] | None:
+        return self._last_raw_output
+
+    @property
+    def last_validated_output(self) -> dict[str, Any] | None:
+        return self._last_validated_output
 
     def _serialize_message(self, message: Message) -> dict[str, Any]:
         timestamp = message.timestamp
@@ -387,20 +431,46 @@ class LLMExtractor(ExtractorInterface):
         self,
         entity_map: dict[tuple[str, str], ExtractedEntity],
         name: str,
-        entity_type: str,
+        type_label: str | None,
         source_message_ids: list[int],
+        confidence: float = 1.0,
         aliases: list[str] | None = None,
         tags: list[str] | None = None,
     ) -> None:
         clean_name = self._clean_text(name)
-        normalized_type = self._normalize_entity_type(entity_type)
+        normalized_type = self._clean_type_label(type_label)
+        normalized_confidence = max(0.0, min(1.0, float(confidence)))
         if not clean_name:
             return
-        key = (clean_name.lower(), normalized_type)
+        name_key = clean_name.lower()
+        key = (name_key, normalized_type or "")
         entity = entity_map.get(key)
+
+        if entity is None and normalized_type is not None:
+            # Prefer promoting a previously unknown type for the same entity name.
+            unknown_key = (name_key, "")
+            entity = entity_map.get(unknown_key)
+            if entity is not None:
+                entity.type_label = normalized_type
+                entity_map[key] = entity
+                del entity_map[unknown_key]
+
+        if entity is None and normalized_type is None:
+            # If the same name already exists with one inferred type, reuse it.
+            same_name_keys = [existing_key for existing_key in entity_map if existing_key[0] == name_key]
+            if len(same_name_keys) == 1:
+                entity = entity_map[same_name_keys[0]]
+
         if entity is None:
-            entity = ExtractedEntity(name=clean_name, entity_type=normalized_type)
+            entity = ExtractedEntity(
+                name=clean_name,
+                type_label=normalized_type,
+                confidence=normalized_confidence,
+            )
             entity_map[key] = entity
+        if entity.type_label is None and normalized_type is not None:
+            entity.type_label = normalized_type
+        entity.confidence = max(entity.confidence, normalized_confidence)
         for message_id in source_message_ids:
             if message_id not in entity.source_message_ids:
                 entity.source_message_ids.append(message_id)
@@ -447,11 +517,12 @@ class LLMExtractor(ExtractorInterface):
         return cls._normalize_label(value)
 
     @classmethod
-    def _normalize_entity_type(cls, raw_type: str | None) -> str:
-        return normalize_entity_type(raw_type)
+    def _clean_snippet(cls, value: str | None) -> str | None:
+        cleaned = cls._clean_text(value)
+        return cleaned or None
 
     @classmethod
-    def _clean_snippet(cls, value: str | None) -> str | None:
+    def _clean_type_label(cls, value: str | None) -> str | None:
         cleaned = cls._clean_text(value)
         return cleaned or None
 

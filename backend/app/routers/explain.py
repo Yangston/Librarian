@@ -6,10 +6,16 @@ from sqlalchemy.orm import Session
 from app.db.dependencies import get_db
 from app.schemas.common import ApiResponse
 from app.schemas.explain import FactExplainData, RelationExplainData
-from app.services.explain import get_fact_explain, get_relation_explain
+from app.services.explain import (
+    get_fact_explain,
+    get_fact_explain_by_id,
+    get_relation_explain,
+    get_relation_explain_by_id,
+)
 
 
 router = APIRouter(prefix="/conversations/{conversation_id}")
+global_router = APIRouter()
 
 
 @router.get("/facts/{fact_id}/explain", response_model=ApiResponse[FactExplainData])
@@ -39,3 +45,28 @@ def explain_relation(
         raise HTTPException(status_code=404, detail="Relation not found")
     return ApiResponse(data=payload)
 
+
+@global_router.get("/facts/{fact_id}/explain", response_model=ApiResponse[FactExplainData])
+def explain_fact_global(
+    fact_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+) -> ApiResponse[FactExplainData]:
+    """Return traceability details for a fact by ID."""
+
+    payload = get_fact_explain_by_id(db, fact_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Fact not found")
+    return ApiResponse(data=payload)
+
+
+@global_router.get("/relations/{relation_id}/explain", response_model=ApiResponse[RelationExplainData])
+def explain_relation_global(
+    relation_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+) -> ApiResponse[RelationExplainData]:
+    """Return traceability details for a relation by ID."""
+
+    payload = get_relation_explain_by_id(db, relation_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Relation not found")
+    return ApiResponse(data=payload)

@@ -9,7 +9,14 @@ from app.schemas.entity import EntityRead
 from app.schemas.entity_merge_audit import EntityMergeAuditRead
 from app.schemas.fact import FactWithSubjectRead
 from app.schemas.relation import RelationWithEntitiesRead
-from app.services.database import list_entities, list_entity_merge_audits, list_facts, list_relations
+from app.schemas.resolution_event import ResolutionEventRead
+from app.services.database import (
+    list_entities,
+    list_entity_merge_audits,
+    list_facts,
+    list_relations,
+    list_resolution_events,
+)
 
 
 router = APIRouter(prefix="/conversations/{conversation_id}")
@@ -36,6 +43,21 @@ def get_entity_merges(
         data=[
             EntityMergeAuditRead.model_validate(record)
             for record in list_entity_merge_audits(db, conversation_id)
+        ]
+    )
+
+
+@router.get("/resolution-events", response_model=ApiResponse[list[ResolutionEventRead]])
+def get_resolution_events(
+    conversation_id: str = Path(..., min_length=1),
+    db: Session = Depends(get_db),
+) -> ApiResponse[list[ResolutionEventRead]]:
+    """List resolution events for a conversation."""
+
+    return ApiResponse(
+        data=[
+            ResolutionEventRead.model_validate(record)
+            for record in list_resolution_events(db, conversation_id)
         ]
     )
 

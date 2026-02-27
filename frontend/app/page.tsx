@@ -42,10 +42,17 @@ export default function HomePage() {
           <div>POST /conversations/:id/extract</div>
           <div>GET /conversations/:id/entities</div>
           <div>GET /conversations/:id/entity-merges</div>
+          <div>GET /conversations/:id/resolution-events</div>
           <div>GET /conversations/:id/facts</div>
           <div>GET /conversations/:id/relations</div>
+          <div>GET /search?q=...&conversation_id=...</div>
+          <div>GET /conversations/:id/summary</div>
+          <div>GET /entities/:id/graph</div>
+          <div>GET /entities/:id/timeline</div>
           <div>GET /conversations/:id/facts/:factId/explain</div>
           <div>GET /conversations/:id/relations/:relationId/explain</div>
+          <div>GET /facts/:factId/explain</div>
+          <div>GET /relations/:relationId/explain</div>
         </div>
       </section>
     </main>

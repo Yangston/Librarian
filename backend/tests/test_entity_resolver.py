@@ -12,22 +12,22 @@ class EntityResolverTests(unittest.TestCase):
         entities = [
             ExtractedEntity(
                 name="AAPL",
-                entity_type="Company",
+                type_label="Company",
                 aliases=["Apple", "Apple Inc."],
             ),
             ExtractedEntity(
                 name="Apple Inc.",
-                entity_type="Company",
+                type_label="Company",
                 aliases=["Apple", "AAPL"],
             ),
             ExtractedEntity(
                 name="Apple",
-                entity_type="Company",
+                type_label="Company",
                 aliases=["AAPL"],
             ),
             ExtractedEntity(
                 name="Microsoft",
-                entity_type="Company",
+                type_label="Company",
                 aliases=["MSFT"],
             ),
         ]
@@ -54,8 +54,8 @@ class EntityResolverTests(unittest.TestCase):
     def test_same_name_different_types_do_not_merge(self) -> None:
         resolver = EntityResolver()
         entities = [
-            ExtractedEntity(name="Apple", entity_type="Company"),
-            ExtractedEntity(name="Apple", entity_type="Concept"),
+            ExtractedEntity(name="Apple", type_label="Company"),
+            ExtractedEntity(name="Apple", type_label="Concept"),
         ]
 
         plan = resolver.resolve(entities)

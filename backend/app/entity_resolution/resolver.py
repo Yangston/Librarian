@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Iterable
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
+from app.config import get_settings
 from app.entity_resolution.similarity import normalize_entity_text, string_similarity
 from app.extraction.types import ExtractedEntity
+from app.services.embeddings import cosine_similarity, hash_embed_text
 
 
 RESOLVER_VERSION = "phase2-v1"
 _SIMILARITY_THRESHOLD = 0.94
+_EMBEDDING_SIMILARITY_THRESHOLD = 0.90
+_BORDERLINE_EMBEDDING_MIN = 0.82
 
 
 @dataclass(slots=True)
@@ -21,7 +28,7 @@ class EntityResolutionAssignment:
     extracted_index: int
     canonical_cluster_index: int
     canonical_name: str
-    entity_type: str
+    type_label: str | None
     merged: bool
     reason_for_merge: str | None
     confidence: float
@@ -35,20 +42,20 @@ class EntityResolutionPlan:
     assignments: list[EntityResolutionAssignment]
     canonical_cluster_indexes: list[int]
 
-    def resolve_reference(self, name: str, entity_type: str) -> int | None:
+    def resolve_reference(self, name: str, type_label: str | None = None) -> int | None:
         """Resolve an extracted fact/relation reference to a canonical cluster index."""
 
         candidate_normalized = normalize_entity_text(name)
         if not candidate_normalized:
             return None
 
-        type_key = entity_type.strip()
+        requested_type_key = _type_key(type_label) if type_label is not None else None
         best_exact: int | None = None
         best_alias: int | None = None
         best_similarity: tuple[int, float] | None = None
 
         for assignment in self.assignments:
-            if assignment.entity_type != type_key:
+            if requested_type_key is not None and _type_key(assignment.type_label) != requested_type_key:
                 continue
             aliases = {normalize_entity_text(alias) for alias in assignment.known_aliases}
             aliases.discard("")
@@ -85,7 +92,8 @@ class _ClusterMember:
 
 @dataclass(slots=True)
 class _EntityCluster:
-    entity_type: str
+    type_label: str | None
+    type_key: str
     members: list[_ClusterMember] = field(default_factory=list)
     aliases: set[str] = field(default_factory=set)
     normalized_aliases: set[str] = field(default_factory=set)
@@ -137,6 +145,16 @@ class _EntityCluster:
                 best_similarity = max(best_similarity, string_similarity(candidate, existing))
         if best_similarity >= _SIMILARITY_THRESHOLD:
             return ("embedding_similarity_threshold", best_similarity)
+        embedding_score = _best_embedding_similarity(candidate_names, list(self.aliases))
+        if embedding_score >= _EMBEDDING_SIMILARITY_THRESHOLD:
+            return ("embedding_similarity", embedding_score)
+        if embedding_score >= _BORDERLINE_EMBEDDING_MIN and llm_entity_disambiguation(
+            left_name=entity.name,
+            left_aliases=candidate_names,
+            right_name=self.canonical_name,
+            right_aliases=list(self.aliases),
+        ):
+            return ("llm_disambiguation", embedding_score)
         return None
 
     def build_assignment(self, cluster_index: int, member: _ClusterMember) -> EntityResolutionAssignment:
@@ -148,7 +166,7 @@ class _EntityCluster:
             extracted_index=member.extracted_index,
             canonical_cluster_index=cluster_index,
             canonical_name=self.canonical_name,
-            entity_type=self.entity_type,
+            type_label=self.type_label,
             merged=not is_canonical,
             reason_for_merge=(
                 None
@@ -201,9 +219,10 @@ class EntityResolver:
             matched_cluster_index: int | None = None
             matched_reason: str | None = None
             matched_confidence = 0.0
+            entity_type_key = _type_key(entity.type_label)
 
             for cluster_index, cluster in enumerate(clusters):
-                if cluster.entity_type != entity.entity_type:
+                if cluster.type_key != entity_type_key:
                     continue
                 match = cluster.match(entity)
                 if match is None:
@@ -215,7 +234,10 @@ class EntityResolver:
                     matched_confidence = confidence
 
             if matched_cluster_index is None:
-                cluster = _EntityCluster(entity_type=entity.entity_type)
+                cluster = _EntityCluster(
+                    type_label=_clean_type_label(entity.type_label),
+                    type_key=entity_type_key,
+                )
                 cluster.add_member(
                     extracted_index=extracted_index,
                     entity=entity,
@@ -269,3 +291,83 @@ def _canonical_name_score(name: str) -> tuple[int, int, int, int]:
         token_count,
         len(stripped),
     )
+
+
+def _clean_type_label(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _type_key(value: str | None) -> str:
+    cleaned = _clean_type_label(value)
+    return cleaned.lower() if cleaned is not None else "__none__"
+
+
+def _best_embedding_similarity(left_aliases: list[str], right_aliases: list[str]) -> float:
+    if not left_aliases or not right_aliases:
+        return 0.0
+    left_vectors = [hash_embed_text(alias) for alias in left_aliases if alias.strip()]
+    right_vectors = [hash_embed_text(alias) for alias in right_aliases if alias.strip()]
+    if not left_vectors or not right_vectors:
+        return 0.0
+    best = 0.0
+    for left_vector in left_vectors:
+        for right_vector in right_vectors:
+            best = max(best, cosine_similarity(left_vector, right_vector))
+    return best
+
+
+def llm_entity_disambiguation(
+    *,
+    left_name: str,
+    left_aliases: list[str],
+    right_name: str,
+    right_aliases: list[str],
+) -> bool:
+    """Optional LLM disambiguation for borderline entity matches."""
+
+    settings = get_settings()
+    if not settings.enable_resolution_llm_disambiguation or not settings.openai_api_key:
+        return False
+    prompt = (
+        "Decide if two entity mentions refer to the same real-world entity. "
+        "Respond with strict JSON: {\"same_entity\": true|false}."
+    )
+    payload = {
+        "model": settings.openai_model,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": prompt},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "left": {"name": left_name, "aliases": left_aliases},
+                        "right": {"name": right_name, "aliases": right_aliases},
+                    },
+                    ensure_ascii=True,
+                ),
+            },
+        ],
+    }
+    req = urllib_request.Request(
+        url=f"{settings.openai_base_url.rstrip('/')}/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {settings.openai_api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=settings.openai_timeout_seconds) as resp:
+            raw = resp.read().decode("utf-8")
+        decoded = json.loads(raw)
+        content = decoded["choices"][0]["message"]["content"]
+        result = json.loads(content)
+        return bool(result.get("same_entity"))
+    except (urllib_error.URLError, urllib_error.HTTPError, KeyError, IndexError, TypeError, json.JSONDecodeError):
+        return False

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, aliased
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
 from app.models.fact import Fact
+from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
 from app.schemas.fact import FactRead, FactWithSubjectRead
 from app.schemas.relation import RelationRead, RelationWithEntitiesRead
@@ -29,6 +30,17 @@ def list_entity_merge_audits(db: Session, conversation_id: str) -> list[EntityMe
         select(EntityMergeAudit)
         .where(EntityMergeAudit.conversation_id == conversation_id)
         .order_by(EntityMergeAudit.id.asc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def list_resolution_events(db: Session, conversation_id: str) -> list[ResolutionEvent]:
+    """List resolution events for a conversation."""
+
+    stmt = (
+        select(ResolutionEvent)
+        .where(ResolutionEvent.conversation_id == conversation_id)
+        .order_by(ResolutionEvent.id.asc())
     )
     return list(db.scalars(stmt).all())
 

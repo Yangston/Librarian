@@ -62,8 +62,9 @@ def main() -> None:
                 "entities": [
                     {
                         "name": entity.name,
-                        "type": entity.entity_type,
+                        "type_label": entity.type_label,
                         "aliases": entity.aliases,
+                        "confidence": entity.confidence,
                         "tags": entity.tags,
                         "source_message_ids": entity.source_message_ids,
                     }
@@ -71,10 +72,9 @@ def main() -> None:
                 ],
                 "facts": [
                     {
-                        "subject_name": fact.subject_name,
-                        "subject_type": fact.subject_type,
-                        "predicate": fact.predicate,
-                        "object_value": fact.object_value,
+                        "entity_name": fact.entity_name,
+                        "field_label": fact.field_label,
+                        "value_text": fact.value_text,
                         "confidence": fact.confidence,
                         "source_message_ids": fact.source_message_ids,
                         "snippet": fact.snippet,
@@ -83,12 +83,11 @@ def main() -> None:
                 ],
                 "relations": [
                     {
-                        "from_name": relation.from_name,
-                        "from_type": relation.from_type,
-                        "relation_type": relation.relation_type,
-                        "to_name": relation.to_name,
-                        "to_type": relation.to_type,
+                        "from_entity": relation.from_entity,
+                        "relation_label": relation.relation_label,
+                        "to_entity": relation.to_entity,
                         "qualifiers": relation.qualifiers,
+                        "confidence": relation.confidence,
                         "source_message_ids": relation.source_message_ids,
                         "snippet": relation.snippet,
                     }

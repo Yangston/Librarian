@@ -78,14 +78,22 @@ Frontend will run at `http://127.0.0.1:3000`.
 - `POST /conversations/{conversation_id}/extract`
 - `GET /conversations/{conversation_id}/entities`
 - `GET /conversations/{conversation_id}/entity-merges`
+- `GET /conversations/{conversation_id}/resolution-events`
 - `GET /conversations/{conversation_id}/facts`
 - `GET /conversations/{conversation_id}/relations`
 - `GET /schema/predicates`
+- `GET /search?q=...`
+- `GET /entities/{entity_id}`
+- `GET /entities/{entity_id}/graph`
+- `GET /entities/{entity_id}/timeline`
+- `GET /conversations/{conversation_id}/summary`
 
 Additional explainability endpoints:
 
 - `GET /conversations/{conversation_id}/facts/{fact_id}/explain`
 - `GET /conversations/{conversation_id}/relations/{relation_id}/explain`
+- `GET /facts/{fact_id}/explain`
+- `GET /relations/{relation_id}/explain`
 
 ## Example API Requests (3-5 Stock Demo)
 
@@ -169,6 +177,7 @@ Invoke-RestMethod `
 ```powershell
 Invoke-RestMethod -Method Get -Uri "$base/conversations/$conversationId/entities"
 Invoke-RestMethod -Method Get -Uri "$base/conversations/$conversationId/entity-merges"
+Invoke-RestMethod -Method Get -Uri "$base/conversations/$conversationId/resolution-events"
 Invoke-RestMethod -Method Get -Uri "$base/conversations/$conversationId/facts"
 Invoke-RestMethod -Method Get -Uri "$base/conversations/$conversationId/relations"
 Invoke-RestMethod -Method Get -Uri "$base/schema/predicates"
@@ -220,6 +229,7 @@ After running extraction for a conversation:
 ```powershell
 Invoke-RestMethod -Method Get -Uri "$base/conversations/$conversationId/entities"
 Invoke-RestMethod -Method Get -Uri "$base/conversations/$conversationId/entity-merges"
+Invoke-RestMethod -Method Get -Uri "$base/conversations/$conversationId/resolution-events"
 Invoke-RestMethod -Method Get -Uri "$base/schema/predicates"
 ```
 

@@ -13,8 +13,10 @@ class EntityRead(BaseModel):
     id: int
     conversation_id: str
     name: str
+    display_name: str
     canonical_name: str
     type: str
+    type_label: str
     aliases_json: list[str]
     known_aliases_json: list[str]
     tags_json: list[str]
@@ -24,3 +26,4 @@ class EntityRead(BaseModel):
     resolver_version: str | None
     merged_into_id: int | None
     created_at: datetime
+    updated_at: datetime

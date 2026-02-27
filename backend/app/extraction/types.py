@@ -8,20 +8,20 @@ class ExtractedEntity:
     """Entity extracted from one or more messages."""
 
     name: str
-    entity_type: str
+    type_label: str | None = None
+    confidence: float = 0.0
+    source_message_ids: list[int] = field(default_factory=list)
     aliases: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
-    source_message_ids: list[int] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class ExtractedFact:
     """Fact extracted from messages."""
 
-    subject_name: str
-    subject_type: str
-    predicate: str
-    object_value: str
+    entity_name: str
+    field_label: str
+    value_text: str
     confidence: float
     source_message_ids: list[int]
     snippet: str | None = None
@@ -31,12 +31,11 @@ class ExtractedFact:
 class ExtractedRelation:
     """Relation extracted from messages."""
 
-    from_name: str
-    from_type: str
-    relation_type: str
-    to_name: str
-    to_type: str
+    from_entity: str
+    relation_label: str
+    to_entity: str
     qualifiers: dict[str, object]
+    confidence: float
     source_message_ids: list[int]
     snippet: str | None = None
 
@@ -48,4 +47,3 @@ class ExtractionResult:
     entities: list[ExtractedEntity] = field(default_factory=list)
     facts: list[ExtractedFact] = field(default_factory=list)
     relations: list[ExtractedRelation] = field(default_factory=list)
-

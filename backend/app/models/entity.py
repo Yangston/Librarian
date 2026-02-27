@@ -5,18 +5,21 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, CreatedAtMixin, IdMixin
+from app.models.base import Base, CreatedAtMixin, IdMixin, UpdatedAtMixin
+from app.models.embedding_type import EMBEDDING_COLUMN_TYPE
 
 
-class Entity(Base, IdMixin, CreatedAtMixin):
+class Entity(Base, IdMixin, CreatedAtMixin, UpdatedAtMixin):
     """Extracted entity."""
 
     __tablename__ = "entities"
 
     conversation_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     canonical_name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     type: Mapped[str] = mapped_column(String(64), nullable=False)
+    type_label: Mapped[str] = mapped_column(String(64), nullable=False)
     aliases_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     known_aliases_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     tags_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
@@ -33,3 +36,4 @@ class Entity(Base, IdMixin, CreatedAtMixin):
         index=True,
         nullable=True,
     )
+    embedding: Mapped[list[float] | None] = mapped_column(EMBEDDING_COLUMN_TYPE, nullable=True)

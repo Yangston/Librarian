@@ -12,10 +12,13 @@ from sqlalchemy.pool import StaticPool
 from app.extraction.extractor_interface import ExtractorInterface
 from app.extraction.types import ExtractedEntity, ExtractedFact, ExtractionResult
 from app.models.base import Base
+from app.models.conversation_entity_link import ConversationEntityLink
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
+from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
+from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
 from app.schemas.message import MessageCreate
 from app.services.live_chat import run_live_chat_turn
@@ -31,23 +34,22 @@ class _StubExtractor(ExtractorInterface):
             entities=[
                 ExtractedEntity(
                     name="AAPL",
-                    entity_type="Company",
+                    type_label="Company",
                     aliases=["Apple", "Apple Inc."],
                     source_message_ids=user_ids,
                 ),
                 ExtractedEntity(
                     name="Apple Inc.",
-                    entity_type="Company",
+                    type_label="Company",
                     aliases=["AAPL"],
                     source_message_ids=user_ids,
                 ),
             ],
             facts=[
                 ExtractedFact(
-                    subject_name="Apple",
-                    subject_type="Company",
-                    predicate="discussed_in_chat",
-                    object_value="live_test_turn",
+                    entity_name="Apple",
+                    field_label="discussed_in_chat",
+                    value_text="live_test_turn",
                     confidence=0.8,
                     source_message_ids=user_ids,
                 )
@@ -84,8 +86,11 @@ class LiveChatServiceTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.db: Session = self.SessionLocal()
+        self.db.execute(delete(ConversationEntityLink))
         self.db.execute(delete(Relation))
         self.db.execute(delete(Fact))
+        self.db.execute(delete(ExtractorRun))
+        self.db.execute(delete(ResolutionEvent))
         self.db.execute(delete(EntityMergeAudit))
         self.db.execute(delete(Entity))
         self.db.execute(delete(Message))
@@ -123,6 +128,7 @@ class LiveChatServiceTests(unittest.TestCase):
         self.assertEqual(result.assistant_message.role, "assistant")
         self.assertIsNotNone(result.extraction)
         self.assertGreaterEqual(result.extraction.entities_created, 2)
+        self.assertIsNotNone(result.extraction.extractor_run_id)
         self.assertEqual(len(chat_client.calls), 1)
         self.assertEqual(chat_client.calls[0][0]["role"], "system")
         self.assertTrue(any(msg["role"] == "user" for msg in chat_client.calls[0]))
