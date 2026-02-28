@@ -17,6 +17,7 @@ from app.models.schema_relation import SchemaRelation
 from app.schemas.entity import EntityRead
 from app.schemas.fact import FactRead, FactWithSubjectRead
 from app.schemas.knowledge import (
+    ConversationGraphData,
     ConversationSchemaChanges,
     ConversationSummaryData,
     EntityGraphData,
@@ -141,6 +142,40 @@ def get_conversation_summary(db: Session, conversation_id: str) -> ConversationS
         key_facts=key_facts,
         schema_changes_triggered=schema_changes,
         relation_clusters=relation_clusters,
+    )
+
+
+def get_conversation_graph(db: Session, conversation_id: str) -> ConversationGraphData:
+    """Return all entities/relations observed in a conversation."""
+
+    entities = list(
+        db.scalars(
+            select(Entity)
+            .where(Entity.conversation_id == conversation_id, Entity.merged_into_id.is_(None))
+            .order_by(Entity.canonical_name.asc(), Entity.id.asc())
+        )
+    )
+    entity_by_id = {entity.id: entity for entity in entities}
+    relations = list_relations(db, conversation_id)
+
+    # Keep graph complete even if old rows reference entities outside the filtered set.
+    missing_entity_ids = {
+        relation.from_entity_id
+        for relation in relations
+        if relation.from_entity_id not in entity_by_id
+    }
+    missing_entity_ids.update(
+        relation.to_entity_id for relation in relations if relation.to_entity_id not in entity_by_id
+    )
+    if missing_entity_ids:
+        for row in db.scalars(select(Entity).where(Entity.id.in_(sorted(missing_entity_ids)))):
+            entity_by_id[row.id] = row
+
+    ordered_entities = [EntityRead.model_validate(entity) for entity in sorted(entity_by_id.values(), key=lambda item: item.id)]
+    return ConversationGraphData(
+        conversation_id=conversation_id,
+        entities=ordered_entities,
+        relations=relations,
     )
 
 

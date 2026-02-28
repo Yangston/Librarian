@@ -1,5 +1,7 @@
 """Semantic search response schemas."""
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 from app.schemas.entity import EntityRead
@@ -25,5 +27,8 @@ class SemanticSearchData(BaseModel):
 
     query: str
     conversation_id: str | None
+    type_label: str | None
+    start_time: datetime | None
+    end_time: datetime | None
     entities: list[EntitySearchHit]
     facts: list[FactSearchHit]

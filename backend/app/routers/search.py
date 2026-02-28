@@ -1,5 +1,7 @@
 """Semantic search routes."""
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,9 @@ router = APIRouter(prefix="/search")
 def search(
     q: str = Query(..., min_length=1),
     conversation_id: str | None = Query(default=None, min_length=1),
+    type_label: str | None = Query(default=None, min_length=1),
+    start_time: datetime | None = Query(default=None),
+    end_time: datetime | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
 ) -> ApiResponse[SemanticSearchData]:
@@ -25,6 +30,9 @@ def search(
             db,
             query=q,
             conversation_id=conversation_id,
+            type_label=type_label,
+            start_time=start_time,
+            end_time=end_time,
             limit=limit,
         )
     )

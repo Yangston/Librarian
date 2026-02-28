@@ -26,6 +26,26 @@ class SchemaCanonicalizationInfo(BaseModel):
     canonical_label: str | None
     canonical_id: int | None
     status: str
+    proposal: "SchemaProposalLink | None" = None
+
+
+class SchemaProposalLink(BaseModel):
+    """Schema proposal metadata relevant to canonicalization."""
+
+    proposal_id: int
+    proposal_type: str
+    status: str
+    confidence: float
+    created_at: datetime
+
+
+class ExtractionMetadata(BaseModel):
+    """Extractor run metadata attached to explain responses."""
+
+    extractor_run_id: int
+    model_name: str
+    prompt_version: str
+    created_at: datetime
 
 
 class FactExplainData(BaseModel):
@@ -33,6 +53,7 @@ class FactExplainData(BaseModel):
 
     fact: FactWithSubjectRead
     extractor_run_id: int | None
+    extraction_metadata: ExtractionMetadata | None
     source_messages: list[SourceMessageEvidence]
     resolution_events: list[ResolutionEventRead]
     schema_canonicalization: SchemaCanonicalizationInfo
@@ -44,6 +65,7 @@ class RelationExplainData(BaseModel):
 
     relation: RelationWithEntitiesRead
     extractor_run_id: int | None
+    extraction_metadata: ExtractionMetadata | None
     source_messages: list[SourceMessageEvidence]
     resolution_events: list[ResolutionEventRead]
     schema_canonicalization: SchemaCanonicalizationInfo

@@ -16,6 +16,7 @@ class RelationRead(BaseModel):
     relation_type: str
     to_entity_id: int
     scope: str
+    confidence: float
     qualifiers_json: dict[str, object]
     source_message_ids_json: list[int]
     extractor_run_id: int | None

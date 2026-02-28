@@ -6,8 +6,14 @@ from sqlalchemy.orm import Session
 from app.db.dependencies import get_db
 from app.schemas.common import ApiResponse
 from app.schemas.entity import EntityRead
-from app.schemas.knowledge import ConversationSummaryData, EntityGraphData, FactTimelineItem
+from app.schemas.knowledge import (
+    ConversationGraphData,
+    ConversationSummaryData,
+    EntityGraphData,
+    FactTimelineItem,
+)
 from app.services.knowledge import (
+    get_conversation_graph,
     get_conversation_summary,
     get_entity_graph,
     get_entity_record,
@@ -67,3 +73,16 @@ def get_conversation_summary_view(
     """Return conversation-level knowledge summary."""
 
     return ApiResponse(data=get_conversation_summary(db, conversation_id))
+
+
+@router.get(
+    "/conversations/{conversation_id}/graph",
+    response_model=ApiResponse[ConversationGraphData],
+)
+def get_conversation_graph_view(
+    conversation_id: str = Path(..., min_length=1),
+    db: Session = Depends(get_db),
+) -> ApiResponse[ConversationGraphData]:
+    """Return conversation-wide graph (entities + relations)."""
+
+    return ApiResponse(data=get_conversation_graph(db, conversation_id))

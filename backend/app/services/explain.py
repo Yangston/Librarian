@@ -6,16 +6,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.entity import Entity
+from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
 from app.models.relation import Relation
 from app.models.resolution_event import ResolutionEvent
 from app.models.schema_field import SchemaField
+from app.models.schema_proposal import SchemaProposal
 from app.models.schema_relation import SchemaRelation
 from app.schemas.explain import (
+    ExtractionMetadata,
     FactExplainData,
     RelationExplainData,
     SchemaCanonicalizationInfo,
+    SchemaProposalLink,
     SourceMessageEvidence,
 )
 from app.schemas.fact import FactRead, FactWithSubjectRead
@@ -106,6 +110,7 @@ def _build_fact_explain_payload(db: Session, fact: Fact, subject_name: str) -> F
             subject_entity_name=subject_name,
         ),
         extractor_run_id=fact.extractor_run_id,
+        extraction_metadata=_extractor_metadata(db, fact.extractor_run_id),
         source_messages=source_messages,
         resolution_events=resolution_events,
         schema_canonicalization=_schema_info_for_fact(db, fact),
@@ -137,6 +142,7 @@ def _build_relation_explain_payload(
             to_entity_name=to_name,
         ),
         extractor_run_id=relation.extractor_run_id,
+        extraction_metadata=_extractor_metadata(db, relation.extractor_run_id),
         source_messages=source_messages,
         resolution_events=resolution_events,
         schema_canonicalization=_schema_info_for_relation(db, relation),
@@ -170,6 +176,7 @@ def _schema_info_for_fact(db: Session, fact: Fact) -> SchemaCanonicalizationInfo
     return _schema_info(
         db,
         table_name="schema_fields",
+        proposal_type="merge_fields",
         label=fact.predicate,
         model_cls=SchemaField,
     )
@@ -179,6 +186,7 @@ def _schema_info_for_relation(db: Session, relation: Relation) -> SchemaCanonica
     return _schema_info(
         db,
         table_name="schema_relations",
+        proposal_type="merge_relations",
         label=relation.relation_type,
         model_cls=SchemaRelation,
     )
@@ -188,6 +196,7 @@ def _schema_info(
     db: Session,
     *,
     table_name: str,
+    proposal_type: str,
     label: str,
     model_cls: type[SchemaField] | type[SchemaRelation],
 ) -> SchemaCanonicalizationInfo:
@@ -199,6 +208,13 @@ def _schema_info(
             canonical_label=None,
             canonical_id=None,
             status="unregistered",
+            proposal=_schema_proposal_for_label(
+                db,
+                proposal_type=proposal_type,
+                table_name=table_name,
+                observed_label=label,
+                canonical_label=None,
+            ),
         )
     canonical_of_id = row.canonical_of_id
     if canonical_of_id is None:
@@ -208,15 +224,79 @@ def _schema_info(
             canonical_label=row.label,
             canonical_id=row.id,
             status="canonical",
+            proposal=_schema_proposal_for_label(
+                db,
+                proposal_type=proposal_type,
+                table_name=table_name,
+                observed_label=label,
+                canonical_label=row.label,
+            ),
         )
     canonical_row = db.scalar(select(model_cls).where(model_cls.id == canonical_of_id))
+    canonical_label = canonical_row.label if canonical_row is not None else None
     return SchemaCanonicalizationInfo(
         registry_table=table_name,
         observed_label=label,
-        canonical_label=canonical_row.label if canonical_row is not None else None,
+        canonical_label=canonical_label,
         canonical_id=canonical_of_id,
         status="canonicalized",
+        proposal=_schema_proposal_for_label(
+            db,
+            proposal_type=proposal_type,
+            table_name=table_name,
+            observed_label=label,
+            canonical_label=canonical_label,
+        ),
     )
+
+
+def _extractor_metadata(db: Session, extractor_run_id: int | None) -> ExtractionMetadata | None:
+    if extractor_run_id is None:
+        return None
+    run = db.scalar(select(ExtractorRun).where(ExtractorRun.id == extractor_run_id))
+    if run is None:
+        return None
+    return ExtractionMetadata(
+        extractor_run_id=run.id,
+        model_name=run.model_name,
+        prompt_version=run.prompt_version,
+        created_at=run.created_at,
+    )
+
+
+def _schema_proposal_for_label(
+    db: Session,
+    *,
+    proposal_type: str,
+    table_name: str,
+    observed_label: str,
+    canonical_label: str | None,
+) -> SchemaProposalLink | None:
+    rows = list(
+        db.scalars(
+            select(SchemaProposal)
+            .where(SchemaProposal.proposal_type == proposal_type)
+            .order_by(SchemaProposal.created_at.desc(), SchemaProposal.id.desc())
+        ).all()
+    )
+    for proposal in rows:
+        payload = proposal.payload_json or {}
+        payload_table = payload.get("table_name")
+        merged_label = payload.get("merged_label")
+        payload_canonical = payload.get("canonical_label")
+        if payload_table != table_name:
+            continue
+        if merged_label == observed_label or (
+            canonical_label is not None and payload_canonical == canonical_label and merged_label == observed_label
+        ):
+            return SchemaProposalLink(
+                proposal_id=proposal.id,
+                proposal_type=proposal.proposal_type,
+                status=proposal.status,
+                confidence=proposal.confidence,
+                created_at=proposal.created_at,
+            )
+    return None
 
 
 def _get_source_messages(db: Session, conversation_id: str, source_message_ids: list[int]) -> list[SourceMessageEvidence]:

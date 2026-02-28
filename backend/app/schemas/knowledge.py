@@ -50,3 +50,11 @@ class ConversationSummaryData(BaseModel):
     key_facts: list[FactWithSubjectRead]
     schema_changes_triggered: ConversationSchemaChanges
     relation_clusters: list[RelationCluster]
+
+
+class ConversationGraphData(BaseModel):
+    """Conversation-wide graph payload used by graph workspace views."""
+
+    conversation_id: str
+    entities: list[EntityRead]
+    relations: list[RelationWithEntitiesRead]

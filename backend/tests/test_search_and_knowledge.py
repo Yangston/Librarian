@@ -126,6 +126,22 @@ class SearchAndKnowledgeTests(unittest.TestCase):
         self.assertGreaterEqual(len(search_result.entities), 1)
         self.assertGreaterEqual(len(search_result.facts), 1)
         self.assertEqual(search_result.entities[0].entity.canonical_name, "Apple Inc.")
+        typed_filter_result = semantic_search(
+            self.db,
+            query="Apple services revenue",
+            conversation_id=conversation_id,
+            type_label="OperationalRisk",
+        )
+        self.assertEqual(len(typed_filter_result.entities), 0)
+        self.assertEqual(len(typed_filter_result.facts), 0)
+        future_window_result = semantic_search(
+            self.db,
+            query="Apple services revenue",
+            conversation_id=conversation_id,
+            start_time=datetime(2100, 1, 1, tzinfo=timezone.utc),
+        )
+        self.assertEqual(len(future_window_result.entities), 0)
+        self.assertEqual(len(future_window_result.facts), 0)
 
         apple_entity = next(entity for entity in entities if entity.canonical_name == "Apple Inc.")
         graph = get_entity_graph(self.db, apple_entity.id)

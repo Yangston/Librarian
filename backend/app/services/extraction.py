@@ -345,6 +345,7 @@ def _replace_extracted_records(
                 relation_type=relation_type_decision.canonical_predicate,
                 to_entity_id=to_entity.id,
                 scope="conversation",
+                confidence=extracted_relation.confidence,
                 qualifiers_json=qualifiers,
                 source_message_ids_json=extracted_relation.source_message_ids,
                 extractor_run_id=extractor_run_id,

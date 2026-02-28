@@ -3,7 +3,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import database, explain, extraction, knowledge, live_chat, messages, schema, search
+from app.routers import (
+    database,
+    explain,
+    extraction,
+    knowledge,
+    live_chat,
+    messages,
+    mutations,
+    schema,
+    search,
+    workspace,
+)
 
 
 app = FastAPI(title="Librarian API", version="0.1.0")
@@ -24,7 +35,9 @@ app.include_router(schema.router, tags=["schema"])
 app.include_router(explain.router, tags=["explain"])
 app.include_router(explain.global_router, tags=["explain"])
 app.include_router(search.router, tags=["search"])
+app.include_router(workspace.router, tags=["workspace"])
 app.include_router(knowledge.router, tags=["knowledge"])
+app.include_router(mutations.router, tags=["mutations"])
 
 
 @app.get("/health")

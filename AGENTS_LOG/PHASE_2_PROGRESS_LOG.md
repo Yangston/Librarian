@@ -374,3 +374,15 @@ Last updated: 2026-02-27
   - Not run in this step (code-only update with no migration changes).
 - Next step:
   - Run backend + frontend smoke and verify timing logs in server output while triggering `/chat/turn` and `/extract`.
+### Open quality gaps (2026-02-28)
+
+- Step reference: Phase 2 strict quality follow-up (independent audit vs AGENTS/PHASE_2.md)
+- Summary: Logged remaining improvements before calling Phase 2 best-level complete.
+- Remaining improvements:
+  - Enable and validate pgvector as primary path in target env (ENABLE_PGVECTOR=true) instead of relying on JSON fallback.
+  - Implement real fact/relation scope behavior (conversation vs global) instead of always writing conversation.
+  - Add DB indexes aligned with Phase 2 performance constraints for fact/relation label columns (facts.predicate, relations.relation_type).
+  - Remove hardcoded fallback type label Unspecified and preserve truly dynamic free-form type_label.
+  - Harden search/global matching behavior (avoid silent exception fallbacks, revisit global candidate cap strategy).
+- Next step:
+  - Ship a focused Phase 2 quality hardening patch set with migrations and tests for the items above.

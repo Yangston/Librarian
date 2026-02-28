@@ -127,6 +127,10 @@ class ExplainExpandedTests(unittest.TestCase):
         self.assertIsNotNone(fact_global)
         assert fact_scoped is not None
         self.assertEqual(fact_scoped.extractor_run_id, run_result.extractor_run_id)
+        self.assertIsNotNone(fact_scoped.extraction_metadata)
+        self.assertEqual(fact_scoped.extraction_metadata.extractor_run_id, run_result.extractor_run_id)
+        self.assertTrue(fact_scoped.extraction_metadata.model_name)
+        self.assertTrue(fact_scoped.extraction_metadata.prompt_version)
         self.assertGreaterEqual(len(fact_scoped.resolution_events), 1)
         self.assertIn(fact_scoped.schema_canonicalization.status, {"canonical", "canonicalized"})
 
@@ -136,6 +140,10 @@ class ExplainExpandedTests(unittest.TestCase):
         self.assertIsNotNone(relation_global)
         assert relation_scoped is not None
         self.assertEqual(relation_scoped.extractor_run_id, run_result.extractor_run_id)
+        self.assertIsNotNone(relation_scoped.extraction_metadata)
+        self.assertEqual(relation_scoped.extraction_metadata.extractor_run_id, run_result.extractor_run_id)
+        self.assertTrue(relation_scoped.extraction_metadata.model_name)
+        self.assertTrue(relation_scoped.extraction_metadata.prompt_version)
         self.assertGreaterEqual(len(relation_scoped.resolution_events), 1)
         self.assertIn(relation_scoped.schema_canonicalization.status, {"canonical", "canonicalized"})
 

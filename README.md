@@ -1,18 +1,22 @@
-# Librarian (Phase 2 In Progress)
+# Librarian (Phase 3 In Progress)
 
-Librarian is a structured cognitive layer for AI systems. Phase 2 builds on the Phase 1 core flow:
+Librarian is a structured cognitive layer for AI systems. Phase 3 builds on the Phase 2 core flow:
 
 `Conversation -> Structured Entities/Facts/Relations -> Transparent Database`
 
-Testing is now supported in two browser-first modes:
+Phase 3 introduces a human-centered workspace UI on top of the Phase 2 dynamic knowledge engine:
 
-- `JSON Batch Test`: paste a message payload and run extraction manually
-- `Live GPT Chat Test`: send live prompts, persist both sides, and auto-run extraction per turn
+- workspace dashboard
+- conversations list/detail drilldown
+- entities table + entity record pages
+- schema explorer
+- search-first navigation
+- explainability pages
 
 This repository contains:
 
 - `backend/`: FastAPI + SQLAlchemy + Alembic + PostgreSQL
-- `frontend/`: Next.js test harness for `/conversation`, `/database`, `/explain`
+- `frontend/`: Next.js workspace app for `/workspace`, `/conversations`, `/entities`, `/schema`, `/search`
 - `docker-compose.yml`: Local PostgreSQL
 
 ## Quick Start
@@ -70,8 +74,9 @@ npm run dev
 
 Frontend will run at `http://127.0.0.1:3000`.
 
-## API Endpoints (Phase 2 current slice)
+## API Endpoints (Phase 2 + Phase 3 current slice)
 
+- `GET /conversations`
 - `POST /conversations/{conversation_id}/messages`
 - `GET /conversations/{conversation_id}/messages`
 - `POST /conversations/{conversation_id}/chat/turn`
@@ -81,8 +86,11 @@ Frontend will run at `http://127.0.0.1:3000`.
 - `GET /conversations/{conversation_id}/resolution-events`
 - `GET /conversations/{conversation_id}/facts`
 - `GET /conversations/{conversation_id}/relations`
+- `GET /recent/entities`
+- `GET /entities?sort=&order=&q=&type_label=&fields=`
 - `GET /schema/predicates`
-- `GET /search?q=...`
+- `GET /schema/overview`
+- `GET /search?q=...&conversation_id=...&type_label=...&start_time=...&end_time=...`
 - `GET /entities/{entity_id}`
 - `GET /entities/{entity_id}/graph`
 - `GET /entities/{entity_id}/timeline`
@@ -209,18 +217,18 @@ These cover:
 - rerun behavior replacing prior merge audits for a conversation
 - predicate registry normalization/frequency tracking and schema service listing
 
-### Manual website smoke test (Phase 2 entity resolution)
+### Manual website smoke test (Phase 3 workspace)
 
 1. Start backend and frontend.
-2. Open `http://127.0.0.1:3000/conversation` for the unified test console.
-3. Test Mode A (`JSON Batch Test`): click `Run Demo Flow`.
-4. Confirm the structured tables populate and merge audits appear.
-5. Test Mode B (`Live Chat Test`): switch to `Live Chat Test` or open `http://127.0.0.1:3000/live`.
-6. Send a prompt with `Auto-run extraction` enabled.
-7. Confirm new messages appear and the database panels refresh automatically.
-8. In `/database`, confirm `Entities` shows `canonical_name`, `merged_into_id`, and resolution metadata.
-9. Confirm `Entity Merge Audits` shows merge reason + confidence.
-10. Confirm `Predicate Registry` table shows canonical predicates/relation types with frequency counts.
+2. Open `http://127.0.0.1:3000/workspace`.
+3. Confirm dashboard sections load: recent conversations, recent entities, recent schema changes.
+4. Open `/conversations` and navigate into `/conversations/{id}`.
+5. On conversation detail, verify both tabs render and `Re-run Extraction` completes.
+6. Open `/entities`, apply sort/filter, and toggle dynamic columns.
+7. Open `/entities/{id}` and confirm facts, relation tables, timeline, and explain links render.
+8. Open `/schema` and confirm nodes/fields/relations/proposals are visible.
+9. Open `/search`, run a query, and verify entity/fact grouped results link correctly.
+10. Open `/explain/facts/{id}` or `/explain/relations/{id}` from table links and verify provenance metadata.
 
 ### Manual API smoke test (Phase 2 entity resolution)
 
