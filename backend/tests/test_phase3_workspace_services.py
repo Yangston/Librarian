@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, delete
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -154,6 +154,43 @@ class Phase3WorkspaceServiceTests(unittest.TestCase):
         self.assertGreaterEqual(len(schema_overview.fields), 1)
         self.assertGreaterEqual(len(schema_overview.relations), 1)
         self.assertIn("sentiment", {field.label for field in schema_overview.fields})
+
+    def test_workspace_queries_prune_stale_state_when_no_conversations_exist(self) -> None:
+        self.db.add(
+            Entity(
+                conversation_id="orphan-conversation",
+                name="Orphan Entity",
+                display_name="Orphan Entity",
+                canonical_name="Orphan Entity",
+                type="Unknown",
+                type_label="Unknown",
+            )
+        )
+        self.db.add(PredicateRegistryEntry(kind="fact_predicate", predicate="orphan_metric"))
+        self.db.add(SchemaNode(label="OrphanNode"))
+        self.db.add(SchemaField(label="orphan_field"))
+        self.db.add(SchemaRelation(label="orphan_relation"))
+        self.db.add(
+            SchemaProposal(
+                proposal_type="field_merge",
+                payload_json={"from": "a", "to": "b"},
+                confidence=0.42,
+                evidence_json={},
+                status="proposed",
+            )
+        )
+        self.db.commit()
+
+        conversations = list_conversations(self.db, limit=10, offset=0)
+        self.assertEqual(conversations.total, 0)
+        self.assertEqual(len(conversations.items), 0)
+
+        self.assertIsNone(self.db.scalar(select(Entity.id).limit(1)))
+        self.assertIsNone(self.db.scalar(select(PredicateRegistryEntry.id).limit(1)))
+        self.assertIsNone(self.db.scalar(select(SchemaNode.id).limit(1)))
+        self.assertIsNone(self.db.scalar(select(SchemaField.id).limit(1)))
+        self.assertIsNone(self.db.scalar(select(SchemaRelation.id).limit(1)))
+        self.assertIsNone(self.db.scalar(select(SchemaProposal.id).limit(1)))
 
     def _seed_conversation(self, conversation_id: str, content: str, timestamp: datetime) -> None:
         create_messages(

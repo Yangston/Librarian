@@ -270,6 +270,203 @@ Summary:
 - Next step:
   - Optional: replace confirm-based deletes with inline confirmation UI chips for full non-modal CRUD flow
 
+### Productized UI/UX overhaul + `/app/*` hard cutover (2026-02-28)
+
+- Step number:
+  - `Phase 3 UI/UX overhaul implementation`
+- Summary:
+  - Implemented hard route cutover to grouped product shell routes under `/app/*`:
+    - `/app`
+    - `/app/chat`
+    - `/app/graph`
+    - `/app/conversations`
+    - `/app/conversations/[conversation_id]`
+    - `/app/entities`
+    - `/app/entities/[entity_id]`
+    - `/app/schema`
+    - `/app/search`
+    - `/app/explain/[kind]/[id]`
+  - Removed old top-level Phase 3 route files:
+    - `/workspace`
+    - `/chat`
+    - `/graph`
+    - `/conversations`
+    - `/entities`
+    - `/schema`
+    - `/search`
+    - `/explain`
+  - Reworked app shell architecture:
+    - root layout now neutral
+    - new nested `/app` layout with sidebar + sticky top bar
+    - persisted sidebar collapse state in localStorage key:
+      - `librarian.shell.sidebarCollapsed.v1`
+  - Added marketing landing page at `/` with CTA entry into product shell.
+  - Overhauled chat workspace (`/app/chat`) into three-region layout:
+    - conversation rail with search + pin + recent
+    - central transcript/composer
+    - right contextual controls
+    - implemented localStorage keys:
+      - `librarian.chat.pins.v1`
+      - `librarian.chat.lastConversation.v1`
+    - implemented new conversation ID generation format:
+      - `chat-YYYYMMDD-HHMMSS`
+  - Overhauled graph workspace (`/app/graph`) into full-height sandbox layout:
+    - compact control bar
+    - dominant canvas
+    - side inspector behavior:
+      - hover preview
+      - click-to-pin editing inspector
+  - Introduced reusable UI primitives:
+    - `frontend/components/ui/Panel.tsx`
+    - `frontend/components/ui/DataTable.tsx`
+    - `frontend/components/ui/States.tsx`
+  - Updated global design system styling and shell/page presentation in:
+    - `frontend/app/globals.css`
+  - Updated README manual route references to `/app/*` flow.
+- Files changed:
+  - `frontend/app/layout.tsx`
+  - `frontend/app/page.tsx`
+  - `frontend/app/globals.css`
+  - `frontend/app/app/layout.tsx`
+  - `frontend/app/app/page.tsx`
+  - `frontend/app/app/chat/page.tsx`
+  - `frontend/app/app/graph/page.tsx`
+  - `frontend/app/app/conversations/page.tsx`
+  - `frontend/app/app/conversations/[conversation_id]/page.tsx`
+  - `frontend/app/app/entities/page.tsx`
+  - `frontend/app/app/entities/[entity_id]/page.tsx`
+  - `frontend/app/app/schema/page.tsx`
+  - `frontend/app/app/search/page.tsx`
+  - `frontend/app/app/explain/page.tsx`
+  - `frontend/app/app/explain/[kind]/[id]/page.tsx`
+  - `frontend/components/AppNav.tsx`
+  - `frontend/components/AppShell.tsx`
+  - `frontend/components/ui/Panel.tsx`
+  - `frontend/components/ui/DataTable.tsx`
+  - `frontend/components/ui/States.tsx`
+  - `README.md`
+- Migration status:
+  - `No migration required` (frontend route/layout/component refactor only)
+- Test/build status:
+  - Frontend:
+    - `npm run build` (from `frontend/`) -> passing
+    - verified generated routes include only new `/app/*` product pages for workspace features
+- Next step:
+  - Execute full manual smoke checklist across desktop + mobile breakpoints for navigation, chat rail pinning persistence, and graph hover/pin inspector UX.
+
+### Product shell polish continuation (2026-02-28)
+
+- Step number:
+  - `Phase 3 UI polish continuation`
+- Summary:
+  - Restored legacy green visual system across the redesigned shell and landing surfaces.
+  - Added cross-page UI polish patterns:
+    - reusable route-level reveal animation via `routeFade`
+    - standardized view header/action patterns (`viewHeader`, `viewTitle`, `viewActions`)
+    - sticky table headers and subtle row-hover affordances
+    - improved error panel styling
+  - Improved mobile shell usability:
+    - added mobile sidebar backdrop
+    - click backdrop to close nav
+    - sidebar auto-closes on navigation clicks via `AppNav` callback
+  - Applied standardized header/action layout to key routes:
+    - dashboard
+    - conversations list/detail
+    - entities list
+    - search
+    - schema explorer
+    - explain landing/detail
+- Files changed:
+  - `frontend/app/globals.css`
+  - `frontend/components/AppNav.tsx`
+  - `frontend/components/AppShell.tsx`
+  - `frontend/app/app/page.tsx`
+  - `frontend/app/app/conversations/page.tsx`
+  - `frontend/app/app/conversations/[conversation_id]/page.tsx`
+  - `frontend/app/app/entities/page.tsx`
+  - `frontend/app/app/search/page.tsx`
+  - `frontend/app/app/schema/page.tsx`
+  - `frontend/app/app/explain/page.tsx`
+  - `frontend/app/app/explain/[kind]/[id]/page.tsx`
+  - `frontend/app/app/graph/page.tsx`
+- Migration status:
+  - `No migration required` (frontend-only UX polish)
+- Test/build status:
+  - Frontend:
+    - `npm run build` (from `frontend/`) -> passing
+- Next step:
+  - Perform full manual desktop/mobile smoke and accessibility pass (focus order + keyboard navigation + contrast checks) and patch any remaining interaction rough edges.
+
+### Accessibility + interaction hardening pass (2026-02-28)
+
+- Step number:
+  - `Phase 3 UX hardening follow-up`
+- Summary:
+  - Added product-shell accessibility and keyboard interaction improvements:
+    - skip link to jump to main content
+    - `aria-expanded` / `aria-controls` on nav toggles
+    - ESC-to-close behavior for mobile navigation
+    - mobile body scroll lock while nav drawer is open
+    - mobile backdrop close behavior retained
+  - Added global focus visibility and reduced-motion support:
+    - consistent `:focus-visible` outlines for links/buttons/inputs
+    - `prefers-reduced-motion` fallback disabling animations/transitions
+  - Improved graph keyboard accessibility:
+    - SVG nodes now focusable (`tabIndex=0`, `role="button"`)
+    - Enter/Space toggles node pinning
+    - focus/blur behavior mirrors hover preview
+  - Improved chat workspace semantics:
+    - active conversation selector uses `aria-pressed`
+    - pin controls now toggle Pin/Unpin with updated labels
+    - transcript region is keyboard focusable with ARIA label
+    - extraction summary announced via polite live region
+- Files changed:
+  - `frontend/components/AppShell.tsx`
+  - `frontend/app/globals.css`
+  - `frontend/app/app/graph/page.tsx`
+  - `frontend/app/app/chat/page.tsx`
+- Migration status:
+  - `No migration required` (frontend-only accessibility/interaction refinement)
+- Test/build status:
+  - Frontend:
+    - `npm run build` (from `frontend/`) -> passing
+- Next step:
+  - Run browser-based manual verification pass for keyboard-only navigation and touch interactions, then patch any remaining UX regressions found in live interaction testing.
+
+### Tailwind + shadcn foundation completion (2026-02-28)
+
+- Step number:
+  - `Phase 3.5 foundation completion`
+- Summary:
+  - Implemented Tailwind CSS toolchain and shadcn baseline configuration:
+    - added `tailwind.config.ts`
+    - added `postcss.config.mjs`
+    - added `components.json`
+    - added `frontend/lib/utils.ts` (`cn` helper)
+  - Added shadcn UI primitives:
+    - `frontend/components/ui/button.tsx`
+    - `frontend/components/ui/input.tsx`
+    - `frontend/components/ui/textarea.tsx`
+    - `frontend/components/ui/card.tsx`
+    - `frontend/components/ui/table.tsx`
+    - `frontend/components/ui/badge.tsx`
+  - Migrated shared UI surfaces to the shadcn component layer:
+    - `frontend/components/AppShell.tsx` (shell action controls)
+    - `frontend/components/AppNav.tsx` (navigation actions)
+    - `frontend/components/ui/Panel.tsx`
+    - `frontend/components/ui/DataTable.tsx`
+    - `frontend/components/ui/States.tsx`
+    - `frontend/app/app/page.tsx` (dashboard actions and search input)
+  - Enabled Tailwind directives and tokenized CSS variables in global styles while preserving current layout/class behavior:
+    - `frontend/app/globals.css`
+  - Added dependency updates for Tailwind + shadcn stack:
+    - `frontend/package.json`
+    - `frontend/tsconfig.json` (`@/*` path alias)
+- Migration status:
+  - `No migration required` (frontend styling/component foundation only)
+- Next step:
+  - Install updated frontend dependencies and run `npm run build`, then perform manual responsive smoke checks.
+
 ## Verification
 
 - Backend tests:

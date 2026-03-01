@@ -9,6 +9,7 @@ from app.schemas.entity import EntityRead
 from app.schemas.fact import FactWithSubjectRead
 from app.schemas.message import MessageRead
 from app.schemas.mutations import (
+    ConversationDeleteResult,
     DeleteResult,
     EntityUpdateRequest,
     FactUpdateRequest,
@@ -23,6 +24,7 @@ from app.schemas.mutations import (
 )
 from app.schemas.relation import RelationWithEntitiesRead
 from app.services.mutations import (
+    delete_conversation,
     delete_entity,
     delete_fact,
     delete_message,
@@ -67,6 +69,25 @@ def remove_message(
     if not deleted:
         raise HTTPException(status_code=404, detail="Message not found")
     return ApiResponse(data=DeleteResult(id=message_id, deleted=True))
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    response_model=ApiResponse[ConversationDeleteResult],
+)
+def remove_conversation(
+    conversation_id: str = Path(..., min_length=1),
+    db: Session = Depends(get_db),
+) -> ApiResponse[ConversationDeleteResult]:
+    """Delete one conversation and all conversation-scoped records."""
+
+    clean_conversation_id = conversation_id.strip()
+    deleted = delete_conversation(db, clean_conversation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return ApiResponse(
+        data=ConversationDeleteResult(conversation_id=clean_conversation_id, deleted=True)
+    )
 
 
 @router.patch("/entities/{entity_id}", response_model=ApiResponse[EntityRead])

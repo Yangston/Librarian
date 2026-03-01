@@ -14,6 +14,13 @@ class DeleteResult(BaseModel):
     deleted: bool
 
 
+class ConversationDeleteResult(BaseModel):
+    """Delete response payload for conversation-scoped cleanup."""
+
+    conversation_id: str
+    deleted: bool
+
+
 class MessageUpdateRequest(BaseModel):
     """Allowed mutable fields for a message row."""
 

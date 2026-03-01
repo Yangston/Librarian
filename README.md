@@ -1,6 +1,6 @@
-# Librarian (Phase 3 In Progress)
+# Librarian (Phase 3.5 Complete)
 
-Librarian is a structured cognitive layer for AI systems. Phase 3 builds on the Phase 2 core flow:
+Librarian is a structured cognitive layer for AI systems. Phase 3.5 builds on the Phase 2 core flow:
 
 `Conversation -> Structured Entities/Facts/Relations -> Transparent Database`
 
@@ -16,7 +16,7 @@ Phase 3 introduces a human-centered workspace UI on top of the Phase 2 dynamic k
 This repository contains:
 
 - `backend/`: FastAPI + SQLAlchemy + Alembic + PostgreSQL
-- `frontend/`: Next.js workspace app for `/workspace`, `/conversations`, `/entities`, `/schema`, `/search`
+- `frontend/`: Next.js workspace app with marketing landing at `/`, product shell under `/app/*`, and a Tailwind + shadcn UI foundation
 - `docker-compose.yml`: Local PostgreSQL
 
 ## Quick Start
@@ -220,15 +220,15 @@ These cover:
 ### Manual website smoke test (Phase 3 workspace)
 
 1. Start backend and frontend.
-2. Open `http://127.0.0.1:3000/workspace`.
+2. Open `http://127.0.0.1:3000/`.
 3. Confirm dashboard sections load: recent conversations, recent entities, recent schema changes.
-4. Open `/conversations` and navigate into `/conversations/{id}`.
+4. Open `/app/conversations` and navigate into `/app/conversations/{id}`.
 5. On conversation detail, verify both tabs render and `Re-run Extraction` completes.
-6. Open `/entities`, apply sort/filter, and toggle dynamic columns.
-7. Open `/entities/{id}` and confirm facts, relation tables, timeline, and explain links render.
-8. Open `/schema` and confirm nodes/fields/relations/proposals are visible.
-9. Open `/search`, run a query, and verify entity/fact grouped results link correctly.
-10. Open `/explain/facts/{id}` or `/explain/relations/{id}` from table links and verify provenance metadata.
+6. Open `/app/entities`, apply sort/filter, and toggle dynamic columns.
+7. Open `/app/entities/{id}` and confirm facts, relation tables, timeline, and explain links render.
+8. Open `/app/schema` and confirm nodes/fields/relations/proposals are visible.
+9. Open `/app/search`, run a query, and verify entity/fact grouped results link correctly.
+10. Open `/app/explain/facts/{id}` or `/app/explain/relations/{id}` from table links and verify provenance metadata.
 
 ### Manual API smoke test (Phase 2 entity resolution)
 

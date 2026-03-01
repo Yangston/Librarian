@@ -1,34 +1,80 @@
-:root {
-  --bg: #f2f6f5;
-  --ink: #152627;
-  --muted: #5f7272;
-  --panel: #ffffff;
-  --panel-strong: #f8fffd;
-  --border: #c9d8d5;
-  --accent: #0a786e;
-  --accent-ink: #ffffff;
-  --danger: #9f2e2e;
-  --shadow: rgba(7, 41, 38, 0.09);
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-* {
-  box-sizing: border-box;
-}
+@layer base {
+  :root {
+    --background: #f2f6f5;
+    --foreground: #152627;
+    --card: #ffffff;
+    --card-foreground: #152627;
+    --popover: #ffffff;
+    --popover-foreground: #152627;
+    --primary: #0a786e;
+    --primary-foreground: #ffffff;
+    --secondary: #e4f0ed;
+    --secondary-foreground: #152627;
+    --muted: #d4e1de;
+    --muted-foreground: #5f7272;
+    --accent: #0a786e;
+    --accent-foreground: #ffffff;
+    --destructive: #9f2e2e;
+    --destructive-foreground: #ffffff;
+    --border: #c9d8d5;
+    --input: #c9d8d5;
+    --ring: #0a786e;
+    --radius: 0.75rem;
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  color: var(--ink);
-  font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
-  background:
-    radial-gradient(circle at 8% 10%, rgba(10, 120, 110, 0.18), transparent 42%),
-    radial-gradient(circle at 92% 0%, rgba(17, 75, 132, 0.12), transparent 35%),
-    linear-gradient(180deg, #f5fbfa, var(--bg));
+    /* Backward-compatible aliases for existing Phase 3.5 classes. */
+    --bg: var(--background);
+    --ink: var(--foreground);
+    --panel: var(--card);
+    --panel-strong: #f8fffd;
+    --accent-ink: var(--accent-foreground);
+    --danger: var(--destructive);
+    --shadow: rgba(7, 41, 38, 0.09);
+    --sidebar-background: 165 35% 97%;
+    --sidebar-foreground: 183 29% 12%;
+    --sidebar-primary: 174 85% 25%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 165 26% 92%;
+    --sidebar-accent-foreground: 183 29% 12%;
+    --sidebar-border: 165 20% 84%;
+    --sidebar-ring: 174 85% 25%;
+  }
+
+  * {
+    box-sizing: border-box;
+    @apply border-border;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    color: var(--ink);
+    font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+    background:
+      radial-gradient(circle at 8% 10%, rgba(10, 120, 110, 0.18), transparent 42%),
+      radial-gradient(circle at 92% 0%, rgba(17, 75, 132, 0.12), transparent 35%),
+      linear-gradient(180deg, #f5fbfa, var(--bg));
+  }
+  .dark {
+    --popover: #0f172a;
+    --popover-foreground: #f8fafc;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
 }
 
 a {
-  color: #0f5d8f;
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -36,26 +82,17 @@ a:hover {
   text-decoration: underline;
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 58%, white);
+  outline-offset: 2px;
+}
+
 code {
   font-family: "IBM Plex Mono", "Cascadia Mono", "Consolas", monospace;
-}
-
-.appShell {
-  width: min(1240px, 100%);
-  margin: 0 auto;
-  padding: 1.75rem 1rem 3rem;
-}
-
-.appHeader {
-  display: grid;
-  gap: 0.45rem;
-  margin-bottom: 1.1rem;
-}
-
-.appHeader h1 {
-  margin: 0;
-  font-size: clamp(2rem, 4vw, 3rem);
-  letter-spacing: -0.02em;
 }
 
 .eyebrow {
@@ -63,45 +100,316 @@ code {
   font-size: 0.78rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .subtle {
   margin: 0;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
-.appNav {
+.marketingPage {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 2.2rem 1rem 3rem;
+  display: grid;
+  gap: 1.1rem;
+}
+
+.marketingHero {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: clamp(1.3rem, 2.6vw, 2.6rem);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(10, 120, 110, 0.16), transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 255, 253, 0.96));
+  box-shadow: 0 12px 36px var(--shadow);
+  display: grid;
+  gap: 0.85rem;
+  animation: revealIn 0.45s ease both;
+}
+
+.marketingHero h1 {
+  margin: 0;
+  max-width: 860px;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+}
+
+.marketingCtas {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.55rem;
-  margin-bottom: 1.2rem;
+  gap: 0.65rem;
 }
 
-.appNav a {
+.marketingGrid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.marketingCard {
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.8);
-  padding: 0.45rem 0.8rem;
+  border-radius: 14px;
+  padding: 0.95rem;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+
+.marketingCard h2 {
+  margin: 0 0 0.38rem;
+  font-size: 1.08rem;
+}
+
+.marketingProof {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.productShell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  transition: grid-template-columns 0.18s ease;
+}
+
+.productShell.collapsed {
+  grid-template-columns: 86px minmax(0, 1fr);
+}
+
+.productShell.collapsed .sidebarIntro {
+  display: none;
+}
+
+.productSidebar {
+  border-right: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(245, 252, 250, 0.95));
+  padding: 1rem 0.85rem;
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+  transition: padding 0.18s ease;
+}
+
+.brandRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.brandMark {
   color: var(--ink);
-  transition: transform 0.12s ease, border-color 0.12s ease;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: inline-flex;
+  align-items: center;
 }
 
-.appNav a.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
+.brandCompact {
+  display: none;
 }
 
-.appNav a:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+.shellToggle {
+  font-size: 0.69rem;
+  line-height: 1;
+  min-width: 46px;
+  padding: 0.4rem 0.45rem;
+}
+
+.sidebarIntro {
+  font-size: 0.82rem;
+}
+
+.productNav {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.productNav a {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.56rem 0.66rem;
+  color: var(--ink);
+  font-weight: 600;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   text-decoration: none;
 }
 
-.pageBody {
+.productNav a.active {
+  background: color-mix(in srgb, var(--accent) 14%, white);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+}
+
+.navGlyph {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--accent) 75%, black);
+  background: color-mix(in srgb, var(--accent) 7%, white);
+  flex-shrink: 0;
+}
+
+.navLabel {
+  white-space: nowrap;
+}
+
+.productShell.collapsed .productSidebar {
+  padding-inline: 0.48rem;
+}
+
+.productShell.collapsed .brandFull {
+  display: none;
+}
+
+.productShell.collapsed .brandCompact {
+  display: inline;
+}
+
+.productShell.collapsed .brandRow {
+  justify-content: center;
+  flex-direction: column;
+}
+
+.productShell.collapsed .productNav a {
+  justify-content: center;
+  padding-inline: 0.45rem;
+}
+
+.productShell.collapsed .navLabel {
+  display: none;
+}
+
+.productMain {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+
+.productTopbar {
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 15;
+}
+
+.topbarText {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.mobileMenuButton {
+  display: none;
+}
+
+.collapseDesktopButton {
+  display: inline-flex;
+}
+
+.mobileNavBackdrop {
+  display: none;
+}
+
+.productContent {
+  min-width: 0;
   display: grid;
   gap: 1rem;
+  padding: 1rem;
+}
+
+.skipLink {
+  position: absolute;
+  left: -999px;
+  top: 0.5rem;
+  z-index: 100;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+}
+
+.skipLink:focus-visible {
+  left: 0.75rem;
+}
+
+.routeFade > * {
+  animation: revealIn 0.3s ease both;
+}
+
+.routeFade > *:nth-child(2) {
+  animation-delay: 0.04s;
+}
+
+.routeFade > *:nth-child(3) {
+  animation-delay: 0.08s;
+}
+
+.viewHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.viewTitle {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.viewTitle h2,
+.viewTitle h1 {
+  margin: 0;
+}
+
+.viewActions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+@keyframes revealIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 .panel {
@@ -163,7 +471,7 @@ code {
 }
 
 .field span {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.83rem;
 }
 
@@ -260,7 +568,7 @@ code {
 }
 
 .quickCard span {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.9rem;
 }
 
@@ -280,7 +588,7 @@ code {
 }
 
 .statCard span {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -339,13 +647,21 @@ code {
 .table th {
   border-top: 0;
   font-size: 0.79rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(245, 252, 250, 0.98), rgba(240, 248, 246, 0.97));
+}
+
+.table tbody tr:hover td {
+  background: color-mix(in srgb, var(--accent) 4%, white);
 }
 
 .emptyCell {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .simpleList {
@@ -357,12 +673,17 @@ code {
 
 .simpleList p {
   margin: 0.25rem 0 0;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .errorText {
   color: var(--danger);
   font-weight: 600;
+}
+
+.panel.errorText {
+  background: linear-gradient(180deg, #fffafa, #fff5f5);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
 }
 
 .pager {
@@ -417,12 +738,12 @@ code {
 }
 
 .graphEdge line {
-  stroke: color-mix(in srgb, var(--muted) 62%, white);
+  stroke: color-mix(in srgb, var(--muted-foreground) 62%, white);
   stroke-width: 0.44;
 }
 
 .graphEdge.outgoing line {
-  stroke: color-mix(in srgb, var(--accent) 66%, var(--muted));
+  stroke: color-mix(in srgb, var(--accent) 66%, var(--muted-foreground));
 }
 
 .graphEdge.incoming line {
@@ -501,7 +822,7 @@ code {
   display: inline-flex;
   gap: 0.35rem;
   align-items: center;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.82rem;
 }
 
@@ -513,7 +834,7 @@ code {
 }
 
 .graphLegendDefault {
-  background: color-mix(in srgb, var(--muted) 62%, white);
+  background: color-mix(in srgb, var(--muted-foreground) 62%, white);
 }
 
 .graphLegendHighlight {
@@ -522,6 +843,93 @@ code {
 
 .graphLegendFocus {
   background: color-mix(in srgb, var(--accent) 85%, black);
+}
+
+.graphLegendDim {
+  background: color-mix(in srgb, var(--muted-foreground) 55%, white);
+  opacity: 0.55;
+}
+
+.graphCanvasControls {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.graphCanvasControls button {
+  min-width: 124px;
+}
+
+.graphStudioCanvasWrap {
+  margin-top: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+  min-height: 540px;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(18, 119, 109, 0.12), transparent 44%),
+    radial-gradient(circle at 82% 72%, rgba(212, 99, 45, 0.09), transparent 40%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 252, 250, 0.92));
+}
+
+.graphStudioCanvasWrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(16, 81, 74, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(16, 81, 74, 0.08) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+.graphStudioCanvasWrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at center, transparent 56%, rgba(8, 36, 33, 0.16) 120%);
+  pointer-events: none;
+}
+
+.graphCySurface {
+  position: absolute;
+  inset: 0;
+}
+
+.graphInlineEditor {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 14px));
+  width: min(280px, calc(100% - 1.2rem));
+  border: 1px solid color-mix(in srgb, var(--border) 90%, #0d6a62);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(253, 255, 255, 0.97), rgba(245, 252, 250, 0.95));
+  box-shadow: 0 18px 36px rgba(5, 33, 31, 0.22);
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.5rem;
+  z-index: 20;
+}
+
+.graphInlineEditor .field {
+  margin: 0;
+}
+
+.graphInlineEditor .field span {
+  font-size: 0.72rem;
+}
+
+.graphInlineEditorActions {
+  display: flex;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.graphInlineError {
+  margin: 0;
+  color: color-mix(in srgb, var(--destructive) 88%, black);
+  font-size: 0.78rem;
 }
 
 .neighborList li {
@@ -591,7 +999,7 @@ code {
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .schemaExplorer .toolbar .input {
@@ -599,42 +1007,128 @@ code {
   min-width: 0;
 }
 
-.schemaTableWrap {
-  max-width: 100%;
-}
-
-.schemaTable {
-  min-width: 980px;
-  table-layout: auto;
-}
-
-.schemaTable th,
-.schemaTable td {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.schemaTable thead th {
-  white-space: nowrap;
-  min-width: 130px;
-}
-
 .chatWorkspace {
   display: grid;
-  gap: 1rem;
+  gap: 0.9rem;
+  height: calc(100dvh - 9.5rem);
+  min-height: calc(100vh - 170px);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(250px, 320px);
+  align-items: stretch;
 }
 
-@media (min-width: 1060px) {
-  .chatWorkspace {
-    grid-template-columns: 320px minmax(0, 1fr);
-    align-items: start;
-  }
+.chatRail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.chatSidebar {
+.conversationList {
+  display: grid;
+  gap: 0.4rem;
+  padding-bottom: 0.5rem;
+}
+
+.conversationItem {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.72rem 4.1rem 0.72rem 0.9rem;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversationItem.active {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, white);
+}
+
+.conversationItem.pinned {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.conversationMeta {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.conversationButtons {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.conversationItemName {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversationTitleRow {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.conversationActions {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 0.18rem;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, white);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.conversationMeta:hover .conversationActions,
+.conversationMeta:focus-within .conversationActions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pinButton {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.38rem;
+}
+
+.deleteMini {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+}
+
+.chatHeaderMeta {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.chatMetaPanel {
   display: grid;
   gap: 0.75rem;
+  align-content: start;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chatSystemPrompt {
@@ -643,8 +1137,12 @@ code {
 }
 
 .chatMainPanel {
-  display: grid;
-  gap: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chatTranscriptModern {
@@ -654,16 +1152,18 @@ code {
   padding: 0.75rem;
   display: grid;
   gap: 0.75rem;
-  min-height: 420px;
-  max-height: 62vh;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
 .chatBubbleModern {
-  max-width: min(92%, 760px);
+  max-width: min(82%, 680px);
+  width: fit-content;
+  min-width: 0;
   border-radius: 14px;
   border: 1px solid var(--border);
-  padding: 0.7rem 0.75rem;
+  padding: 0.62rem 0.72rem;
   display: grid;
   gap: 0.35rem;
   background: rgba(255, 255, 255, 0.92);
@@ -672,6 +1172,55 @@ code {
 .chatBubbleModern p {
   margin: 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chatMessageMarkdown {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.chatMessageMarkdown > * {
+  margin: 0;
+}
+
+.chatMessageMarkdown p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chatMessageMarkdown ul,
+.chatMessageMarkdown ol {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.chatMessageMarkdown li {
+  margin: 0;
+}
+
+.chatMessageMarkdown h1,
+.chatMessageMarkdown h2,
+.chatMessageMarkdown h3,
+.chatMessageMarkdown h4 {
+  font-size: 0.98rem;
+  line-height: 1.35;
+}
+
+.chatMessageMarkdown pre {
+  margin: 0;
+  padding: 0.55rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.86);
+  overflow: auto;
+}
+
+.chatMessageMarkdown code {
+  font-size: 0.84em;
 }
 
 .chatBubbleModern.assistant {
@@ -686,16 +1235,21 @@ code {
 
 .chatBubbleModern.user {
   justify-self: end;
-  border-color: color-mix(in srgb, #0f5d8f 20%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, #0f5d8f 8%, white),
+    color-mix(in srgb, var(--accent) 10%, white),
     rgba(255, 255, 255, 0.92)
   );
 }
 
 .chatBubbleModern.thinking {
   border-style: dashed;
+}
+
+.chatBubbleModern.pending {
+  max-width: min(58%, 460px);
+  padding: 0.52rem 0.62rem;
 }
 
 .chatActions {
@@ -734,6 +1288,78 @@ code {
   resize: vertical;
 }
 
+.chatWorkspace.contextHidden {
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+}
+
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 24, 24, 0.46);
+  backdrop-filter: blur(2px);
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.confirmDialog {
+  width: min(520px, 100%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  box-shadow: 0 18px 48px var(--shadow);
+  padding: 1rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.confirmDialog h3 {
+  margin: 0;
+}
+
+.graphWorkspace {
+  display: grid;
+  gap: 0.75rem;
+  min-height: calc(100vh - 170px);
+}
+
+.graphTopbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: flex-end;
+}
+
+.graphTopbar .field {
+  flex: 1 1 170px;
+}
+
+.graphStudioGrid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  min-height: calc(100vh - 320px);
+}
+
+.graphCanvasPanel {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.graphCanvasPanel .graphStudioCanvasWrap {
+  height: 100%;
+  min-height: 540px;
+}
+
+.graphInspector {
+  display: grid;
+  gap: 0.7rem;
+  align-content: start;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+}
+
 .schemaInlineLink {
   margin-bottom: 0.3rem;
 }
@@ -750,25 +1376,85 @@ code {
 }
 
 @media (max-width: 760px) {
-  .appShell {
-    padding: 1rem 0.55rem 2rem;
+  .productShell {
+    grid-template-columns: 1fr;
   }
 
-  .schemaPanel {
-    padding: 0.75rem;
+  .productSidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(88vw, 300px);
+    transform: translateX(-102%);
+    transition: transform 0.2s ease;
+    z-index: 40;
   }
 
-  .schemaTable {
-    min-width: 900px;
-    font-size: 0.84rem;
+  .productSidebar.open {
+    transform: translateX(0);
   }
 
-  .schemaTable th,
-  .schemaTable td {
-    padding: 0.42rem 0.5rem;
+  .mobileNavBackdrop {
+    position: fixed;
+    inset: 0;
+    display: block;
+    background: rgba(7, 26, 24, 0.26);
+    backdrop-filter: blur(1px);
+    z-index: 30;
+  }
+
+  .mobileMenuButton {
+    display: inline-flex;
+  }
+
+  .collapseDesktopButton {
+    display: none;
+  }
+
+  .productTopbar {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .productContent {
+    padding: 0.75rem 0.55rem 1.2rem;
+  }
+
+  .marketingPage {
+    padding: 1rem 0.55rem 1.3rem;
   }
 
   .schemaPanel .button.ghost {
     width: 100%;
+  }
+
+  .chatWorkspace {
+    height: auto;
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .chatWorkspace.contextHidden {
+    grid-template-columns: 1fr;
+  }
+
+  .chatBubbleModern {
+    max-width: 94%;
+  }
+
+  .graphStudioGrid {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .graphCanvasPanel .graphStudioCanvasWrap {
+    min-height: 390px;
+  }
+
+  .graphCanvasControls button {
+    min-width: 0;
+    flex: 1 1 42%;
+  }
+
+  .graphInlineEditor {
+    width: min(248px, calc(100% - 1rem));
   }
 }

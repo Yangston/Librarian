@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from threading import Lock
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.conversation_entity_link import ConversationEntityLink
 from app.models.entity import Entity
+from app.models.entity_merge_audit import EntityMergeAudit
 from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
+from app.models.predicate_registry_entry import PredicateRegistryEntry
+from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
 from app.models.schema_field import SchemaField
 from app.models.schema_node import SchemaNode
@@ -30,6 +34,9 @@ from app.schemas.workspace import (
     SchemaRelationOverview,
 )
 
+_empty_state_verified = False
+_empty_state_lock = Lock()
+
 
 def list_conversations(
     db: Session,
@@ -39,6 +46,8 @@ def list_conversations(
     query: str | None = None,
 ) -> ConversationsListResponse:
     """Return paginated conversations ordered by latest activity."""
+
+    _ensure_workspace_empty_state_consistent(db)
 
     message_stats = (
         select(
@@ -125,6 +134,8 @@ def list_conversations(
 def list_recent_entities(db: Session, *, limit: int) -> RecentEntitiesResponse:
     """Return recently updated canonical entities."""
 
+    _ensure_workspace_empty_state_consistent(db)
+
     conversation_counts = (
         select(
             ConversationEntityLink.entity_id.label("entity_id"),
@@ -172,6 +183,8 @@ def list_entities_catalog(
     selected_fields: list[str] | None = None,
 ) -> EntityListingResponse:
     """Return global entities table rows with optional dynamic fact columns."""
+
+    _ensure_workspace_empty_state_consistent(db)
 
     selected = _normalize_fields(selected_fields or [])
     available_fields = _list_available_dynamic_fields(db, limit=40)
@@ -249,6 +262,8 @@ def list_entities_catalog(
 
 def get_schema_overview(db: Session, *, per_section_limit: int = 200, proposal_limit: int = 100) -> SchemaOverviewData:
     """Return schema nodes/fields/relations/proposals in one payload."""
+
+    _ensure_workspace_empty_state_consistent(db)
 
     nodes_raw = list(db.scalars(select(SchemaNode).order_by(SchemaNode.label.asc())).all())
     fields_raw = list(db.scalars(select(SchemaField).order_by(SchemaField.label.asc())).all())
@@ -408,3 +423,52 @@ def _stat_text(stats: dict[str, object] | None, key: str) -> str | None:
     value = stats.get(key)
     return value if isinstance(value, str) and value else None
 
+
+def _ensure_workspace_empty_state_consistent(db: Session) -> None:
+    global _empty_state_verified
+
+    if db.scalar(select(Message.id).limit(1)) is not None:
+        _empty_state_verified = False
+        return
+
+    if _empty_state_verified:
+        return
+
+    with _empty_state_lock:
+        if _empty_state_verified:
+            return
+
+        has_stale_state = any(
+            [
+                db.scalar(select(Entity.id).limit(1)) is not None,
+                db.scalar(select(Fact.id).limit(1)) is not None,
+                db.scalar(select(Relation.id).limit(1)) is not None,
+                db.scalar(select(ConversationEntityLink.id).limit(1)) is not None,
+                db.scalar(select(ExtractorRun.id).limit(1)) is not None,
+                db.scalar(select(ResolutionEvent.id).limit(1)) is not None,
+                db.scalar(select(EntityMergeAudit.id).limit(1)) is not None,
+                db.scalar(select(SchemaNode.id).limit(1)) is not None,
+                db.scalar(select(SchemaField.id).limit(1)) is not None,
+                db.scalar(select(SchemaRelation.id).limit(1)) is not None,
+                db.scalar(select(SchemaProposal.id).limit(1)) is not None,
+                db.scalar(select(PredicateRegistryEntry.id).limit(1)) is not None,
+            ]
+        )
+        if not has_stale_state:
+            _empty_state_verified = True
+            return
+
+        db.execute(delete(SchemaProposal))
+        db.execute(delete(SchemaRelation))
+        db.execute(delete(SchemaField))
+        db.execute(delete(SchemaNode))
+        db.execute(delete(PredicateRegistryEntry))
+        db.execute(delete(ConversationEntityLink))
+        db.execute(delete(Relation))
+        db.execute(delete(Fact))
+        db.execute(delete(ExtractorRun))
+        db.execute(delete(ResolutionEvent))
+        db.execute(delete(EntityMergeAudit))
+        db.execute(delete(Entity))
+        db.commit()
+        _empty_state_verified = True

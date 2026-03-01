@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.entity import Entity
 from app.models.fact import Fact
+from app.models.message import Message
 from app.schemas.entity import EntityRead
 from app.schemas.fact import FactRead, FactWithSubjectRead
 from app.schemas.search import EntitySearchHit, FactSearchHit, SemanticSearchData
@@ -26,6 +27,17 @@ def semantic_search(
     limit: int = 10,
 ) -> SemanticSearchData:
     """Return top semantic entity/fact matches for a query."""
+
+    if db.scalar(select(Message.id).limit(1)) is None:
+        return SemanticSearchData(
+            query=query,
+            conversation_id=conversation_id,
+            type_label=type_label,
+            start_time=start_time,
+            end_time=end_time,
+            entities=[],
+            facts=[],
+        )
 
     clean_query = " ".join(query.strip().split())
     if not clean_query:

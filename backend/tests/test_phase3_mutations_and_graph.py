@@ -39,6 +39,7 @@ from app.services.extraction import run_extraction_for_conversation
 from app.services.knowledge import get_conversation_graph
 from app.services.messages import create_messages
 from app.services.mutations import (
+    delete_conversation,
     delete_entity,
     delete_fact,
     delete_message,
@@ -91,6 +92,117 @@ class _MutationsExtractor(ExtractorInterface):
                     qualifiers={"window": "q4"},
                     confidence=0.71,
                     source_message_ids=message_ids,
+                )
+            ],
+        )
+
+
+class _SecondaryMutationsExtractor(ExtractorInterface):
+    def extract(self, messages: list[Message]) -> ExtractionResult:
+        message_ids = [message.id for message in messages]
+        return ExtractionResult(
+            entities=[
+                ExtractedEntity(
+                    name="Tesla Inc.",
+                    type_label="Company",
+                    aliases=["Tesla", "TSLA"],
+                    source_message_ids=message_ids,
+                ),
+                ExtractedEntity(
+                    name="Rivian",
+                    type_label="Company",
+                    aliases=["RIVN"],
+                    source_message_ids=message_ids,
+                ),
+            ],
+            facts=[
+                ExtractedFact(
+                    entity_name="Tesla Inc.",
+                    field_label="market_view",
+                    value_text="mixed",
+                    confidence=0.68,
+                    source_message_ids=message_ids,
+                )
+            ],
+            relations=[
+                ExtractedRelation(
+                    from_entity="Tesla Inc.",
+                    relation_label="benchmarked_against",
+                    to_entity="Rivian",
+                    qualifiers={"window": "q1"},
+                    confidence=0.64,
+                    source_message_ids=message_ids,
+                )
+            ],
+        )
+
+
+class _MessageScopedMutationsExtractor(ExtractorInterface):
+    def extract(self, messages: list[Message]) -> ExtractionResult:
+        if len(messages) < 2:
+            message_ids = [message.id for message in messages]
+            return ExtractionResult(
+                entities=[
+                    ExtractedEntity(
+                        name="Carryover Corp.",
+                        type_label="Company",
+                        aliases=["Carryover"],
+                        source_message_ids=message_ids,
+                    )
+                ],
+                facts=[
+                    ExtractedFact(
+                        entity_name="Carryover Corp.",
+                        field_label="carryover_flag",
+                        value_text="true",
+                        confidence=0.7,
+                        source_message_ids=message_ids,
+                    )
+                ],
+                relations=[],
+            )
+
+        first_id = messages[0].id
+        second_id = messages[1].id
+        return ExtractionResult(
+            entities=[
+                ExtractedEntity(
+                    name="First Only Co.",
+                    type_label="Company",
+                    aliases=["FirstCo"],
+                    source_message_ids=[first_id],
+                ),
+                ExtractedEntity(
+                    name="Second Only Co.",
+                    type_label="Company",
+                    aliases=["SecondCo"],
+                    source_message_ids=[second_id],
+                ),
+            ],
+            facts=[
+                ExtractedFact(
+                    entity_name="First Only Co.",
+                    field_label="signal_one",
+                    value_text="from-first",
+                    confidence=0.7,
+                    source_message_ids=[first_id],
+                ),
+                ExtractedFact(
+                    entity_name="Second Only Co.",
+                    field_label="signal_two",
+                    value_text="from-second",
+                    confidence=0.8,
+                    source_message_ids=[second_id],
+                ),
+            ],
+            relations=[
+                ExtractedRelation(
+                    from_entity="First Only Co.",
+                    relation_label="paired_with",
+                    to_entity="Second Only Co.",
+                    qualifiers={},
+                    confidence=0.6,
+                    source_message_ids=[first_id],
                 )
             ],
         )
@@ -192,8 +304,6 @@ class Phase3MutationsAndGraphTests(unittest.TestCase):
         self.assertIsNone(self.db.scalar(select(Relation).where(Relation.id == relation.id)))
         self.assertTrue(delete_fact(self.db, fact.id))
         self.assertIsNone(self.db.scalar(select(Fact).where(Fact.id == fact.id)))
-        self.assertTrue(delete_message(self.db, message.id))
-        self.assertIsNone(self.db.scalar(select(Message).where(Message.id == message.id)))
         self.assertTrue(delete_entity(self.db, apple.id))
         self.assertIsNone(self.db.scalar(select(Entity).where(Entity.id == apple.id)))
 
@@ -233,6 +343,276 @@ class Phase3MutationsAndGraphTests(unittest.TestCase):
         self.assertTrue(delete_schema_relation(self.db, schema_relation.id))
         self.assertTrue(delete_schema_field(self.db, schema_field.id))
         self.assertTrue(delete_schema_node(self.db, schema_node.id))
+        self.assertTrue(delete_message(self.db, message.id))
+        self.assertIsNone(self.db.scalar(select(Message).where(Message.id == message.id)))
+
+    def test_delete_conversation_removes_scoped_records(self) -> None:
+        first_conversation_id = "phase3-delete-001"
+        second_conversation_id = "phase3-delete-002"
+
+        create_messages(
+            self.db,
+            first_conversation_id,
+            [
+                MessageCreate(
+                    role="user",
+                    content="Track Apple and NVIDIA positioning.",
+                    timestamp=datetime(2026, 2, 28, 10, 0, tzinfo=timezone.utc),
+                )
+            ],
+        )
+        create_messages(
+            self.db,
+            second_conversation_id,
+            [
+                MessageCreate(
+                    role="user",
+                    content="Track Tesla and Rivian positioning.",
+                    timestamp=datetime(2026, 2, 28, 10, 5, tzinfo=timezone.utc),
+                )
+            ],
+        )
+        run_extraction_for_conversation(self.db, first_conversation_id, extractor=_MutationsExtractor())
+        run_extraction_for_conversation(
+            self.db, second_conversation_id, extractor=_SecondaryMutationsExtractor()
+        )
+
+        self.assertTrue(delete_conversation(self.db, first_conversation_id))
+        self.assertFalse(delete_conversation(self.db, "missing-conversation"))
+
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(
+                        select(Message).where(Message.conversation_id == first_conversation_id)
+                    ).all()
+                )
+            ),
+        )
+        self.assertEqual(
+            0,
+            len(list(self.db.scalars(select(Fact).where(Fact.conversation_id == first_conversation_id)).all())),
+        )
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(
+                        select(Relation).where(Relation.conversation_id == first_conversation_id)
+                    ).all()
+                )
+            ),
+        )
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(
+                        select(ConversationEntityLink).where(
+                            ConversationEntityLink.conversation_id == first_conversation_id
+                        )
+                    ).all()
+                )
+            ),
+        )
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(
+                        select(ResolutionEvent).where(
+                            ResolutionEvent.conversation_id == first_conversation_id
+                        )
+                    ).all()
+                )
+            ),
+        )
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(
+                        select(EntityMergeAudit).where(
+                            EntityMergeAudit.conversation_id == first_conversation_id
+                        )
+                    ).all()
+                )
+            ),
+        )
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(
+                        select(ExtractorRun).where(ExtractorRun.conversation_id == first_conversation_id)
+                    ).all()
+                )
+            ),
+        )
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(select(Entity).where(Entity.conversation_id == first_conversation_id)).all()
+                )
+            ),
+        )
+
+        self.assertGreater(
+            len(
+                list(
+                    self.db.scalars(
+                        select(Message).where(Message.conversation_id == second_conversation_id)
+                    ).all()
+                )
+            ),
+            0,
+        )
+        self.assertGreater(
+            len(
+                list(
+                    self.db.scalars(
+                        select(Fact).where(Fact.conversation_id == second_conversation_id)
+                    ).all()
+                )
+            ),
+            0,
+        )
+        self.assertGreater(
+            len(
+                list(
+                    self.db.scalars(
+                        select(Relation).where(Relation.conversation_id == second_conversation_id)
+                    ).all()
+                )
+            ),
+            0,
+        )
+        self.assertEqual(0, len(list(self.db.scalars(select(SchemaField).where(SchemaField.label == "sentiment")).all())))
+        self.assertEqual(1, len(list(self.db.scalars(select(SchemaField).where(SchemaField.label == "market_view")).all())))
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(
+                        select(SchemaRelation).where(SchemaRelation.label == "compared_with")
+                    ).all()
+                )
+            ),
+        )
+        self.assertEqual(
+            1,
+            len(
+                list(
+                    self.db.scalars(
+                        select(SchemaRelation).where(SchemaRelation.label == "benchmarked_against")
+                    ).all()
+                )
+            ),
+        )
+
+    def test_delete_last_conversation_clears_global_workspace_state(self) -> None:
+        conversation_id = "phase3-delete-last-001"
+        create_messages(
+            self.db,
+            conversation_id,
+            [
+                MessageCreate(
+                    role="user",
+                    content="Compare Apple and NVIDIA in a final pass.",
+                    timestamp=datetime(2026, 2, 28, 11, 0, tzinfo=timezone.utc),
+                )
+            ],
+        )
+        run_extraction_for_conversation(self.db, conversation_id, extractor=_MutationsExtractor())
+
+        self.assertTrue(delete_conversation(self.db, conversation_id))
+
+        self.assertEqual(0, len(list(self.db.scalars(select(Message)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(Entity)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(Fact)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(Relation)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(ConversationEntityLink)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(ExtractorRun)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(ResolutionEvent)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(EntityMergeAudit)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(PredicateRegistryEntry)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(SchemaNode)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(SchemaField)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(SchemaRelation)).all())))
+        self.assertEqual(0, len(list(self.db.scalars(select(SchemaProposal)).all())))
+
+    def test_delete_message_removes_only_message_scoped_knowledge(self) -> None:
+        conversation_id = "phase3-delete-message-001"
+        create_messages(
+            self.db,
+            conversation_id,
+            [
+                MessageCreate(
+                    role="user",
+                    content="First insight for one entity.",
+                    timestamp=datetime(2026, 2, 28, 11, 5, tzinfo=timezone.utc),
+                ),
+                MessageCreate(
+                    role="user",
+                    content="Second insight for another entity.",
+                    timestamp=datetime(2026, 2, 28, 11, 6, tzinfo=timezone.utc),
+                ),
+            ],
+        )
+        run_extraction_for_conversation(self.db, conversation_id, extractor=_MessageScopedMutationsExtractor())
+
+        first_message = self.db.scalar(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.timestamp.asc(), Message.id.asc())
+        )
+        assert first_message is not None
+        self.assertTrue(delete_message(self.db, first_message.id))
+
+        self.assertEqual(
+            1,
+            len(list(self.db.scalars(select(Message).where(Message.conversation_id == conversation_id)).all())),
+        )
+        self.assertEqual(
+            1,
+            len(list(self.db.scalars(select(Fact).where(Fact.conversation_id == conversation_id)).all())),
+        )
+        remaining_fact = self.db.scalar(select(Fact).where(Fact.conversation_id == conversation_id))
+        assert remaining_fact is not None
+        self.assertEqual(remaining_fact.predicate, "signal_two")
+        self.assertEqual(remaining_fact.object_value, "from-second")
+
+        self.assertEqual(
+            0,
+            len(list(self.db.scalars(select(Relation).where(Relation.conversation_id == conversation_id)).all())),
+        )
+        self.assertEqual(
+            1,
+            len(
+                list(
+                    self.db.scalars(
+                        select(ConversationEntityLink).where(
+                            ConversationEntityLink.conversation_id == conversation_id
+                        )
+                    ).all()
+                )
+            ),
+        )
+        remaining_link = self.db.scalar(
+            select(ConversationEntityLink).where(ConversationEntityLink.conversation_id == conversation_id)
+        )
+        assert remaining_link is not None
+        self.assertNotEqual(remaining_link.first_seen_message_id, first_message.id)
+
+        self.assertEqual(
+            1,
+            len(list(self.db.scalars(select(Entity).where(Entity.conversation_id == conversation_id)).all())),
+        )
+        remaining_entity = self.db.scalar(select(Entity).where(Entity.conversation_id == conversation_id))
+        assert remaining_entity is not None
+        self.assertEqual(remaining_entity.canonical_name, "Second Only Co.")
 
     def _reset_tables(self) -> None:
         self.db.execute(delete(SchemaProposal))

@@ -1,6 +1,12 @@
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+let appWarmupPromise: Promise<void> | null = null;
+const GET_CACHE_TTL_MS = 30_000;
+type GetCacheEntry = { expiresAt: number; payload: unknown };
+const getResponseCache = new Map<string, GetCacheEntry>();
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+
 type ApiResponse<T> = {
   data: T;
 };
@@ -35,13 +41,60 @@ function buildQuery(params: Record<string, string | number | boolean | null | un
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const url = `${API_BASE_URL}${path}`;
+  const headers = {
+    "Content-Type": "application/json",
+    ...(init?.headers ?? {})
+  };
+
+  if (method === "GET") {
+    const cached = getResponseCache.get(url);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.payload as T;
+    }
+
+    const inFlight = inFlightGetRequests.get(url);
+    if (inFlight) {
+      return (await inFlight) as T;
+    }
+
+    const requestPromise = (async () => {
+      const response = await fetch(url, {
+        ...init,
+        method,
+        headers,
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        let payload: ApiErrorPayload | null = null;
+        try {
+          payload = (await response.json()) as ApiErrorPayload;
+        } catch {
+          payload = null;
+        }
+        throw new Error(formatApiError(response.status, payload));
+      }
+
+      const payload = (await response.json()) as T;
+      getResponseCache.set(url, {
+        payload,
+        expiresAt: Date.now() + GET_CACHE_TTL_MS
+      });
+      return payload;
+    })().finally(() => {
+      inFlightGetRequests.delete(url);
+    });
+
+    inFlightGetRequests.set(url, requestPromise);
+    return (await requestPromise) as T;
+  }
+
+  const response = await fetch(url, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    },
-    cache: init?.method && init.method !== "GET" ? undefined : "no-store"
+    method,
+    headers
   });
 
   if (!response.ok) {
@@ -67,6 +120,7 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
     method: "POST",
     body: body === undefined ? undefined : JSON.stringify(body)
   });
+  getResponseCache.clear();
   return response.data;
 }
 
@@ -75,11 +129,13 @@ async function apiPatch<T>(path: string, body: unknown): Promise<T> {
     method: "PATCH",
     body: JSON.stringify(body)
   });
+  getResponseCache.clear();
   return response.data;
 }
 
 async function apiDelete<T>(path: string): Promise<T> {
   const response = await requestJson<ApiResponse<T>>(path, { method: "DELETE" });
+  getResponseCache.clear();
   return response.data;
 }
 
@@ -373,6 +429,11 @@ export type DeleteResult = {
   deleted: boolean;
 };
 
+export type ConversationDeleteResult = {
+  conversation_id: string;
+  deleted: boolean;
+};
+
 export type SchemaNodeMutationRead = {
   id: number;
   label: string;
@@ -526,6 +587,10 @@ export async function deleteMessage(messageId: number): Promise<DeleteResult> {
   return apiDelete<DeleteResult>(`/messages/${messageId}`);
 }
 
+export async function deleteConversation(conversationId: string): Promise<ConversationDeleteResult> {
+  return apiDelete<ConversationDeleteResult>(`/conversations/${encodeURIComponent(conversationId)}`);
+}
+
 export async function updateEntityRecord(
   entityId: number,
   payload: {
@@ -621,4 +686,20 @@ export async function updateSchemaRelation(
 
 export async function deleteSchemaRelation(schemaRelationId: number): Promise<DeleteResult> {
   return apiDelete<DeleteResult>(`/schema/relations/${schemaRelationId}`);
+}
+
+export function warmWorkspaceApi(): Promise<void> {
+  if (appWarmupPromise) {
+    return appWarmupPromise;
+  }
+
+  appWarmupPromise = Promise.allSettled([
+    getConversations({ limit: 20, offset: 0 }),
+    getConversations({ limit: 200, offset: 0 }),
+    getRecentEntities(12),
+    getEntitiesCatalog({ limit: 25, offset: 0, sort: "last_seen", order: "desc" }),
+    getSchemaOverview({ limit: 200, proposal_limit: 200 })
+  ]).then(() => undefined);
+
+  return appWarmupPromise;
 }
