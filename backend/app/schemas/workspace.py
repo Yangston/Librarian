@@ -9,6 +9,8 @@ class ConversationListItem(BaseModel):
     """Conversation list row with activity counters."""
 
     conversation_id: str
+    pod_id: int | None
+    pod_name: str | None
     first_message_at: datetime | None
     last_message_at: datetime | None
     message_count: int
@@ -100,4 +102,3 @@ class SchemaOverviewData(BaseModel):
     fields: list[SchemaFieldOverview]
     relations: list[SchemaRelationOverview]
     proposals: list[SchemaProposalOverview]
-

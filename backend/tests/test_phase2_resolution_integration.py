@@ -13,18 +13,25 @@ from app.extraction.extractor_interface import ExtractorInterface
 from app.extraction.types import ExtractedEntity, ExtractedFact, ExtractedRelation, ExtractionResult
 from app.models.base import Base
 from app.models.conversation_entity_link import ConversationEntityLink
+from app.models.collection import Collection
+from app.models.collection_item import CollectionItem
+from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
+from app.models.evidence import Evidence
 from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
 from app.models.predicate_registry_entry import PredicateRegistryEntry
+from app.models.pod import Pod
 from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
 from app.models.schema_field import SchemaField
 from app.models.schema_node import SchemaNode
 from app.models.schema_proposal import SchemaProposal
 from app.models.schema_relation import SchemaRelation
+from app.models.source import Source
+from app.models.workspace_edge import WorkspaceEdge
 from app.schemas.message import MessageCreate
 from app.services.database import (
     list_entities,
@@ -398,6 +405,13 @@ class Phase2ResolutionIntegrationTests(unittest.TestCase):
         self.assertEqual(fact_b.subject_entity_id, canonical_a.id)
 
     def _reset_tables(self) -> None:
+        self.db.execute(delete(Evidence))
+        self.db.execute(delete(Source))
+        self.db.execute(delete(WorkspaceEdge))
+        self.db.execute(delete(CollectionItem))
+        self.db.execute(delete(Collection))
+        self.db.execute(delete(Conversation))
+        self.db.execute(delete(Pod))
         self.db.execute(delete(SchemaProposal))
         self.db.execute(delete(SchemaRelation))
         self.db.execute(delete(SchemaField))

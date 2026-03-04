@@ -467,6 +467,118 @@ Summary:
 - Next step:
   - Install updated frontend dependencies and run `npm run build`, then perform manual responsive smoke checks.
 
+### Phase 3.8 pod-based organization + provenance implementation (2026-03-03)
+
+- Step number:
+  - `Phase 3.8`
+- Summary:
+  - Implemented organization layer on top of canonical graph:
+    - new pod/collection hierarchy and collection membership model
+    - scoped graph API for global/pod/collection views
+    - non-semantic workspace containment edges
+  - Added provenance traceability tables and runtime persistence:
+    - `sources` table (message-backed source rows)
+    - `evidence` table (fact/relation evidence links)
+    - extraction pipeline now writes source/evidence rows for each claim/message mapping
+  - Added Legacy bootstrap + seeded “AI Tech Stock Research” collections:
+    - `home`, `stocks`, `macro`, `earnings-guidance`, `news`, `supply-chain`, `valuation-models`, `research-tasks`
+    - deterministic type-label-to-collection assignment
+  - Added backend organization APIs:
+    - `GET /pods`
+    - `GET /pods/{pod_id}`
+    - `GET /pods/{pod_id}/tree`
+    - `GET /collections/{collection_id}`
+    - `GET /collections/{collection_id}/items`
+    - `POST /collections/{collection_id}/items`
+    - `DELETE /collections/{collection_id}/items/{entity_id}`
+    - `GET /graph/scoped`
+  - Extended existing APIs non-breakingly:
+    - `GET /entities` now supports optional `pod_id`/`collection_id`
+    - `GET /search` now supports optional `pod_id`/`collection_id`
+  - Frontend Phase 3.8 additions:
+    - Added `/app/pods` page with pod cards, collection tree, collection item table, scoped graph deep-link
+    - Added `Pods` nav item
+    - Added pod/collection filters to `/app/entities`
+    - Added workspace scope controls to `/app/graph` while preserving conversation graph mode
+    - Added pod/collection filters to `/app/search` and surfaced active filter badges
+- Files changed:
+  - Backend migration:
+    - `backend/alembic/versions/20260303_0011_phase38_org_and_evidence.py`
+  - Backend models:
+    - `backend/app/models/pod.py`
+    - `backend/app/models/collection.py`
+    - `backend/app/models/collection_item.py`
+    - `backend/app/models/workspace_edge.py`
+    - `backend/app/models/source.py`
+    - `backend/app/models/evidence.py`
+    - `backend/app/models/__init__.py`
+    - `backend/app/db/base.py`
+  - Backend schemas/services/routers:
+    - `backend/app/schemas/organization.py`
+    - `backend/app/services/organization.py`
+    - `backend/app/routers/organization.py`
+    - `backend/app/services/extraction.py`
+    - `backend/app/services/mutations.py`
+    - `backend/app/services/workspace.py`
+    - `backend/app/services/search.py`
+    - `backend/app/schemas/search.py`
+    - `backend/app/routers/search.py`
+    - `backend/app/routers/workspace.py`
+    - `backend/app/main.py`
+  - Frontend:
+    - `frontend/lib/api.ts`
+    - `frontend/components/AppNav.tsx`
+    - `frontend/app/app/page.tsx`
+    - `frontend/app/app/entities/page.tsx`
+    - `frontend/app/app/graph/page.tsx`
+    - `frontend/app/app/search/page.tsx`
+    - `frontend/app/app/pods/page.tsx`
+    - `frontend/app/globals.css`
+  - Tests:
+    - `backend/tests/test_phase38_organization_bootstrap.py`
+    - `backend/tests/test_phase38_sources_evidence_backfill.py`
+    - `backend/tests/test_phase38_scoped_graph.py`
+    - `backend/tests/test_phase38_collection_items.py`
+    - `backend/tests/test_phase3_workspace_services.py`
+    - `backend/tests/test_search_and_knowledge.py`
+    - `backend/tests/test_phase3_mutations_and_graph.py`
+    - `backend/tests/test_phase2_resolution_integration.py`
+    - `backend/tests/test_explain_expanded.py`
+- Migration status:
+  - `Added` Alembic revision `20260303_0011_phase38_org_and_evidence.py`
+  - `Validated` migration graph head:
+    - `.venv\Scripts\alembic.exe heads` -> `20260303_0011 (head)`
+- Test/build status:
+  - Backend compile:
+    - `python -m compileall backend/app` -> passing
+    - `.venv\Scripts\python.exe -m compileall alembic` -> passing
+  - Backend tests:
+    - `.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v` -> `31/31` passing
+  - Frontend:
+    - `npm run build` (from `frontend/`) -> passing (includes new `/app/pods` and graph/search/entities scope controls)
+- Next step:
+  - Optional follow-up: add pod/collection CRUD UI (create/edit pods and collections) and inline collection assignment controls on entity detail.
+
+### Phase 3.8 migration idempotency hotfix (2026-03-03)
+
+- Step number:
+  - `Phase 3.8 migration fix`
+- Summary:
+  - Fixed `alembic upgrade head` failures on databases that already had partially pre-created organization tables.
+  - Updated migration `20260303_0011` to:
+    - check table/index existence before creating DDL objects (avoids duplicate table/index transaction aborts)
+    - add missing columns when pre-existing tables are missing expected fields (e.g., `pods.is_default`)
+    - continue with bootstrap/backfill safely after schema reconciliation
+  - Fixed migration runtime `NameError` (`select` -> `sa.select`) in collection membership backfill query.
+- Files changed:
+  - `backend/alembic/versions/20260303_0011_phase38_org_and_evidence.py`
+- Migration status:
+  - Verified:
+    - `.venv\Scripts\alembic.exe upgrade head` -> passing
+    - `.venv\Scripts\alembic.exe current` -> `20260303_0011 (head)`
+- Next step:
+  - None required; migration path is now resilient for partially-provisioned Phase 3.8 schemas.
+
 ## Verification
 
 - Backend tests:
@@ -478,3 +590,32 @@ Summary:
 - Frontend build (Step 8 verification):
   - `npm run build` (from `frontend/`)
   - Result: success (graph neighborhood update compiled; all routes compiled)
+
+### Phase 3.8 runtime compatibility + scoped graph fix (2026-03-03)
+
+- Step number:
+  - `Phase 3.8 runtime bugfix`
+- Summary:
+  - Fixed production runtime break where existing DB schemas required non-null `pod_id` on legacy tables (`messages`, `extractor_runs`, `schema_*`, `predicate_registry_entries`) but backend inserts did not provide values.
+  - Added Alembic compatibility revision to:
+    - ensure a default pod exists (`Legacy`)
+    - backfill null `pod_id` values when present
+    - set server-side `pod_id` defaults on affected tables so existing insert code works safely
+  - Fixed scoped graph deep link from Pods page by including `pod_id` with `collection_id` when opening `/app/graph`.
+- Files changed:
+  - `backend/alembic/versions/20260303_0012_pod_id_defaults_compat.py`
+  - `frontend/app/app/pods/page.tsx`
+- Migration status:
+  - Verified:
+    - `.venv\Scripts\alembic.exe upgrade head` -> passing
+    - Upgraded to `20260303_0012`
+- Validation:
+  - Service-level smoke (real DB):
+    - create messages in new conversation -> passing
+    - delete conversation -> passing
+    - run live chat turn -> passing
+    - scoped graph global/pod/collection calls -> passing
+  - Backend tests:
+    - `pytest tests -q -p no:cacheprovider` -> `31 passed`
+  - Frontend build:
+    - `npm run build` -> passing

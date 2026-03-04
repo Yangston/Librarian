@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Bot,
   ChartNetwork,
+  FolderKanban,
   LayoutDashboard,
   type LucideIcon,
   MessagesSquare,
@@ -26,6 +27,7 @@ const LINKS: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: "/app", label: "Overview", icon: LayoutDashboard },
   { href: "/app/chat", label: "Chat", icon: Bot },
   { href: "/app/graph", label: "Graph", icon: ChartNetwork },
+  { href: "/app/pods", label: "Pods", icon: FolderKanban },
   { href: "/app/conversations", label: "Conversations", icon: MessagesSquare },
   { href: "/app/entities", label: "Entities", icon: UsersRound },
   { href: "/app/schema", label: "Schema", icon: Shapes },

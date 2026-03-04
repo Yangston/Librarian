@@ -4,7 +4,13 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { MessagesSquare } from "lucide-react";
 
-import { type ConversationsListResponse, deleteConversation, getConversations } from "../../../lib/api";
+import {
+  type ConversationsListResponse,
+  type PodRead,
+  deleteConversation,
+  getConversations,
+  getPods
+} from "../../../lib/api";
 import { readConversationNames, removeConversationName } from "../../../lib/conversationNames";
 import { formatTimestamp } from "../../../lib/format";
 import { Badge } from "../../../components/ui/badge";
@@ -24,6 +30,9 @@ export default function ConversationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<ConversationsListResponse | null>(null);
   const [conversationNames, setConversationNames] = useState<Record<string, string>>({});
+  const [pods, setPods] = useState<PodRead[]>([]);
+  const [podDraft, setPodDraft] = useState("__all__");
+  const [appliedPodId, setAppliedPodId] = useState<number | null>(null);
   const [pendingDeleteConversationId, setPendingDeleteConversationId] = useState<string | null>(null);
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null);
 
@@ -36,7 +45,8 @@ export default function ConversationsPage() {
         const data = await getConversations({
           limit: PAGE_SIZE,
           offset,
-          q: appliedQuery || undefined
+          q: appliedQuery || undefined,
+          pod_id: appliedPodId ?? undefined
         });
         if (!active) {
           return;
@@ -57,7 +67,29 @@ export default function ConversationsPage() {
     return () => {
       active = false;
     };
-  }, [appliedQuery, offset]);
+  }, [appliedPodId, appliedQuery, offset]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPods() {
+      try {
+        const podRows = await getPods();
+        if (!active) {
+          return;
+        }
+        setPods(podRows);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setPods([]);
+      }
+    }
+    void loadPods();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     setConversationNames(readConversationNames());
@@ -71,6 +103,8 @@ export default function ConversationsPage() {
     event.preventDefault();
     setOffset(0);
     setAppliedQuery(queryDraft.trim());
+    const nextPodId = podDraft === "__all__" ? null : Number.parseInt(podDraft, 10);
+    setAppliedPodId(Number.isFinite(nextPodId ?? NaN) ? nextPodId : null);
   }
 
   async function confirmDeleteConversation(conversationId: string) {
@@ -138,6 +172,18 @@ export default function ConversationsPage() {
               onChange={(event) => setQueryDraft(event.target.value)}
               className="sm:max-w-md"
             />
+            <select
+              value={podDraft}
+              onChange={(event) => setPodDraft(event.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="__all__">All pods</option>
+              {pods.map((pod) => (
+                <option key={pod.id} value={String(pod.id)}>
+                  {pod.name}
+                </option>
+              ))}
+            </select>
             <Button type="submit">Apply</Button>
           </form>
         </CardHeader>
@@ -163,6 +209,7 @@ export default function ConversationsPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>ID</TableHead>
+                    <TableHead>Pod</TableHead>
                     <TableHead>Last Updated</TableHead>
                     <TableHead>Messages</TableHead>
                     <TableHead>Entities</TableHead>
@@ -175,7 +222,7 @@ export default function ConversationsPage() {
                 <TableBody>
                   {(payload?.items ?? []).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-muted-foreground">
+                      <TableCell colSpan={10} className="text-muted-foreground">
                         No conversations found.
                       </TableCell>
                     </TableRow>
@@ -188,6 +235,7 @@ export default function ConversationsPage() {
                             {item.conversation_id}
                           </Link>
                         </TableCell>
+                        <TableCell>{item.pod_name ?? (item.pod_id != null ? `Pod ${item.pod_id}` : "-")}</TableCell>
                         <TableCell>{formatTimestamp(item.last_message_at)}</TableCell>
                         <TableCell>{item.message_count}</TableCell>
                         <TableCell>{item.entity_count}</TableCell>

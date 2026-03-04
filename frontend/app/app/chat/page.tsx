@@ -9,10 +9,12 @@ import remarkGfm from "remark-gfm";
 import {
   type ConversationListItem,
   type MessageRead,
+  type PodRead,
   deleteConversation,
   deleteMessage,
   getConversationMessages,
   getConversations,
+  getPods,
   runLiveChatTurn,
   updateMessage
 } from "../../../lib/api";
@@ -42,7 +44,9 @@ function createConversationId(now = new Date()): string {
   const hours = `${now.getHours()}`.padStart(2, "0");
   const minutes = `${now.getMinutes()}`.padStart(2, "0");
   const seconds = `${now.getSeconds()}`.padStart(2, "0");
-  return `chat-${year}${month}${day}-${hours}${minutes}${seconds}`;
+  const milliseconds = `${now.getMilliseconds()}`.padStart(3, "0");
+  const entropy = `${Math.floor(Math.random() * 10_000)}`.padStart(4, "0");
+  return `chat-${year}${month}${day}-${hours}${minutes}${seconds}${milliseconds}-${entropy}`;
 }
 
 function readStoredPins(): string[] {
@@ -99,6 +103,8 @@ function ChatPageInner() {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<MessageRead[]>([]);
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
+  const [pods, setPods] = useState<PodRead[]>([]);
+  const [draftPodId, setDraftPodId] = useState<string>("__none__");
   const [pinnedConversationIds, setPinnedConversationIds] = useState<string[]>([]);
   const [conversationNames, setConversationNames] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);
@@ -138,6 +144,44 @@ function ChatPageInner() {
     const regular = filtered.filter((item) => !pinnedConversationIds.includes(item.conversation_id));
     return [...pinned, ...regular];
   }, [conversationNames, conversationSearch, conversations, pinnedConversationIds]);
+
+  const activeConversation = useMemo(
+    () => conversations.find((item) => item.conversation_id === conversationId) ?? null,
+    [conversationId, conversations]
+  );
+
+  const selectedDraftPod = useMemo(
+    () => pods.find((pod) => String(pod.id) === draftPodId) ?? null,
+    [draftPodId, pods]
+  );
+
+  const podConversationCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const item of conversations) {
+      if (item.pod_id == null) {
+        continue;
+      }
+      counts.set(item.pod_id, (counts.get(item.pod_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [conversations]);
+
+  const conversationsByPod = useMemo(() => {
+    const orderedKeys: string[] = [];
+    const grouped = new Map<string, { label: string; items: ConversationListItem[] }>();
+    for (const item of visibleConversations) {
+      const key = item.pod_id == null ? "__none__" : String(item.pod_id);
+      if (!grouped.has(key)) {
+        orderedKeys.push(key);
+        grouped.set(key, {
+          label: item.pod_name ?? (item.pod_id != null ? `Pod ${item.pod_id}` : "Unassigned"),
+          items: []
+        });
+      }
+      grouped.get(key)!.items.push(item);
+    }
+    return orderedKeys.map((key) => ({ key, ...grouped.get(key)! }));
+  }, [visibleConversations]);
 
   async function loadConversationList() {
     setLoadingConversations(true);
@@ -184,6 +228,37 @@ function ChatPageInner() {
 
   useEffect(() => {
     void loadConversationList();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPods() {
+      try {
+        const podRows = await getPods();
+        if (!active) {
+          return;
+        }
+        setPods(podRows);
+        setDraftPodId((current) => {
+          if (podRows.length === 0) {
+            return "__none__";
+          }
+          if (podRows.some((pod) => String(pod.id) === current)) {
+            return current;
+          }
+          return String(podRows[0].id);
+        });
+      } catch {
+        if (!active) {
+          return;
+        }
+        setPods([]);
+      }
+    }
+    void loadPods();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -266,6 +341,15 @@ function ChatPageInner() {
       setError("Conversation id is required.");
       return;
     }
+    const existingConversation = conversations.find(
+      (item) => item.conversation_id === cleanConversationId
+    );
+    const needsPodOnCreate = !existingConversation;
+    const parsedPodId = draftPodId === "__none__" ? null : Number.parseInt(draftPodId, 10);
+    if (needsPodOnCreate && !Number.isFinite(parsedPodId ?? NaN)) {
+      setError("Select a pod before starting a new conversation.");
+      return;
+    }
     setThinking(true);
     setError(null);
     setLastExtractionSummary(null);
@@ -282,6 +366,7 @@ function ChatPageInner() {
     try {
       const result = await runLiveChatTurn(cleanConversationId, {
         content,
+        pod_id: needsPodOnCreate ? (parsedPodId as number) : undefined,
         auto_extract: autoExtract,
         system_prompt: systemPrompt.trim() || undefined
       });
@@ -437,6 +522,12 @@ function ChatPageInner() {
   }
 
   const activeConversationName = conversationNames[conversationId];
+  const isExistingConversation = activeConversation !== null;
+  const canStartConversation = pods.length > 0;
+  const canSendTurn =
+    Boolean(draft.trim()) &&
+    !thinking &&
+    (isExistingConversation || selectedDraftPod !== null);
 
   return (
     <div className={`chatWorkspace routeFade ${contextPanelVisible ? "" : "contextHidden"}`}>
@@ -444,7 +535,12 @@ function ChatPageInner() {
         <CardHeader className="pb-2">
           <div className="sectionTitleRow">
             <CardTitle className="text-lg">Conversations</CardTitle>
-            <Button type="button" size="sm" onClick={startNewConversation}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={startNewConversation}
+              disabled={!canStartConversation}
+            >
               New Chat
             </Button>
           </div>
@@ -455,6 +551,48 @@ function ChatPageInner() {
             value={conversationSearch}
             onChange={(event) => setConversationSearch(event.target.value)}
           />
+          <div className="rounded-md border border-border/70 bg-background/65 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs font-medium text-muted-foreground">New Conversation Pod</Label>
+              <span className="text-xs text-muted-foreground">
+                {selectedDraftPod ? `Selected: ${selectedDraftPod.name}` : "No pod selected"}
+              </span>
+            </div>
+            <select
+              value={draftPodId}
+              onChange={(event) => setDraftPodId(event.target.value)}
+              className="mt-2 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="__none__">Select pod...</option>
+              {pods.map((pod) => (
+                <option key={pod.id} value={String(pod.id)}>
+                  {pod.name}
+                </option>
+              ))}
+            </select>
+            {pods.length === 0 ? (
+              <p className="mt-2 text-xs text-amber-700">
+                Create a pod in the Pods page before starting a new chat.
+              </p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {pods.map((pod) => (
+                  <button
+                    key={pod.id}
+                    type="button"
+                    onClick={() => setDraftPodId(String(pod.id))}
+                    className={`rounded-md border px-2 py-0.5 text-xs transition-colors ${
+                      draftPodId === String(pod.id)
+                        ? "border-primary/50 bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground"
+                    }`}
+                  >
+                    {pod.name} ({podConversationCounts.get(pod.id) ?? 0})
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto pr-2">
             <div className="conversationList">
               {loadingConversations ? (
@@ -462,45 +600,56 @@ function ChatPageInner() {
               ) : visibleConversations.length === 0 ? (
                 <p className="muted">No conversations yet.</p>
               ) : (
-                visibleConversations.map((item) => {
-                  const isPinned = pinnedConversationIds.includes(item.conversation_id);
-                  return (
-                    <div key={item.conversation_id} className="conversationMeta">
-                      <button
-                        className={`conversationItem justify-start overflow-hidden ${conversationId === item.conversation_id ? "active" : ""} ${
-                          isPinned ? "pinned" : ""
-                        }`}
-                        type="button"
-                        onClick={() => setConversationId(item.conversation_id)}
-                        aria-pressed={conversationId === item.conversation_id}
-                      >
-                        <div className="conversationTitleRow">
-                          <strong className="conversationItemName">
-                            {conversationNames[item.conversation_id] ?? item.conversation_id}
-                          </strong>
-                        </div>
-                      </button>
-                      <div className="conversationActions">
-                        <Button
-                          variant={isPinned ? "secondary" : "ghost"}
-                          size="icon"
-                          className="h-7 w-7"
-                          type="button"
-                          onClick={() => togglePin(item.conversation_id)}
-                          aria-label={`${isPinned ? "Unpin" : "Pin"} ${item.conversation_id}`}
-                        >
-                          {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-                        </Button>
-                        <DeleteActionButton
-                          iconOnly
-                          type="button"
-                          onClick={() => requestDeleteConversation(item.conversation_id)}
-                          aria-label={`Delete conversation ${item.conversation_id}`}
-                        />
-                      </div>
+                conversationsByPod.map((group) => (
+                  <div key={group.key} className="space-y-1">
+                    <div className="flex items-center justify-between px-1 text-xs">
+                      <span className="font-medium text-muted-foreground">{group.label}</span>
+                      <span className="text-muted-foreground">{group.items.length}</span>
                     </div>
-                  );
-                })
+                    {group.items.map((item) => {
+                      const isPinned = pinnedConversationIds.includes(item.conversation_id);
+                      return (
+                        <div key={item.conversation_id} className="conversationMeta">
+                          <button
+                            className={`conversationItem justify-start overflow-hidden ${conversationId === item.conversation_id ? "active" : ""} ${
+                              isPinned ? "pinned" : ""
+                            }`}
+                            type="button"
+                            onClick={() => setConversationId(item.conversation_id)}
+                            aria-pressed={conversationId === item.conversation_id}
+                          >
+                            <div className="conversationTitleRow">
+                              <strong className="conversationItemName">
+                                {conversationNames[item.conversation_id] ?? item.conversation_id}
+                              </strong>
+                              <span className="muted">
+                                {item.pod_name ?? (item.pod_id != null ? `Pod ${item.pod_id}` : "No pod")}
+                              </span>
+                            </div>
+                          </button>
+                          <div className="conversationActions">
+                            <Button
+                              variant={isPinned ? "secondary" : "ghost"}
+                              size="icon"
+                              className="h-7 w-7"
+                              type="button"
+                              onClick={() => togglePin(item.conversation_id)}
+                              aria-label={`${isPinned ? "Unpin" : "Pin"} ${item.conversation_id}`}
+                            >
+                              {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                            </Button>
+                            <DeleteActionButton
+                              iconOnly
+                              type="button"
+                              onClick={() => requestDeleteConversation(item.conversation_id)}
+                              aria-label={`Delete conversation ${item.conversation_id}`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -512,6 +661,15 @@ function ChatPageInner() {
           <div className="sectionTitleRow">
             <div className="chatHeaderMeta">
               <CardTitle className="text-xl">{activeConversationName ?? "Chatroom"}</CardTitle>
+              <p className="subtle">
+                {activeConversation?.pod_name
+                  ? `Conversation pod: ${activeConversation.pod_name}`
+                  : activeConversation?.pod_id != null
+                    ? `Conversation pod: Pod ${activeConversation.pod_id}`
+                    : selectedDraftPod
+                      ? `New conversation pod: ${selectedDraftPod.name}`
+                      : "Select a pod to start a new conversation."}
+              </p>
             </div>
             <Button variant="outline" type="button" onClick={toggleContextPanel}>
               {contextPanelVisible ? "Hide Context" : "Show Context"}
@@ -631,8 +789,14 @@ function ChatPageInner() {
               }}
             />
             <div className="sectionTitleRow">
-              <p className="subtle">Chat logs and instructions are persisted per conversation id.</p>
-              <Button type="submit" disabled={thinking || !draft.trim()}>
+              <p className="subtle">
+                {isExistingConversation
+                  ? "Chat logs and instructions are persisted per conversation id."
+                  : selectedDraftPod
+                    ? `This new conversation will start in pod: ${selectedDraftPod.name}.`
+                    : "Select a pod before sending your first message."}
+              </p>
+              <Button type="submit" disabled={!canSendTurn}>
                 {thinking ? "Sending..." : "Send"}
               </Button>
             </div>
@@ -657,6 +821,24 @@ function ChatPageInner() {
                 value={conversationId}
                 onChange={(event) => setConversationId(event.target.value)}
               />
+            </div>
+            <div className="field">
+              <Label>New Conversation Pod</Label>
+              <select
+                value={draftPodId}
+                onChange={(event) => setDraftPodId(event.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="__none__">Select pod...</option>
+                {pods.map((pod) => (
+                  <option key={pod.id} value={String(pod.id)}>
+                    {pod.name}
+                  </option>
+                ))}
+              </select>
+              {activeConversation?.pod_name ? (
+                <p className="subtle">Current conversation pod: {activeConversation.pod_name}</p>
+              ) : null}
             </div>
             <div className="field">
               <Label>Instructions (System Prompt)</Label>

@@ -21,6 +21,21 @@ class Settings(BaseSettings):
     enable_resolution_llm_disambiguation: bool = False
     global_resolution_max_candidates: int = 500
     openai_timeout_seconds: int = 60
+    cors_allowed_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    cors_allowed_origin_regex: str = (
+        r"^https?://("
+        r"localhost|"
+        r"127\.0\.0\.1|"
+        r"0\.0\.0\.0|"
+        r"host\.docker\.internal|"
+        r"192\.168\.\d{1,3}\.\d{1,3}|"
+        r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+        r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
+        r")(:\d+)?$"
+    )
 
     model_config = SettingsConfigDict(
         env_file=str(_BACKEND_DIR / ".env"),

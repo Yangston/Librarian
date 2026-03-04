@@ -18,6 +18,11 @@ from app.schemas.chat import LiveChatTurnResult
 from app.schemas.message import MessageCreate, MessageRead
 from app.services.extraction import run_extraction_for_conversation
 from app.services.messages import create_messages, list_messages
+from app.services.conversations import (
+    ConversationPodConflictError,
+    ConversationPodNotFoundError,
+    ConversationPodRequiredError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +103,7 @@ def run_live_chat_turn(
     conversation_id: str,
     *,
     user_content: str,
+    pod_id: int | None = None,
     auto_extract: bool = True,
     system_prompt: str | None = None,
     extractor: ExtractorInterface | None = None,
@@ -115,6 +121,8 @@ def run_live_chat_turn(
             db,
             conversation_id,
             [MessageCreate(role="user", content=trimmed_content)],
+            pod_id=pod_id,
+            require_pod_for_new=True,
         )[0]
         persist_user_ms = (perf_counter() - started) * 1000.0
 
@@ -134,6 +142,8 @@ def run_live_chat_turn(
             db,
             conversation_id,
             [MessageCreate(role="assistant", content=assistant_content)],
+            pod_id=None,
+            require_pod_for_new=True,
         )[0]
         persist_assistant_ms = (perf_counter() - started) * 1000.0
 
@@ -174,6 +184,8 @@ def run_live_chat_turn(
             (perf_counter() - total_started) * 1000.0,
         )
         return result
+    except (ConversationPodRequiredError, ConversationPodNotFoundError, ConversationPodConflictError) as exc:
+        raise LiveChatError(str(exc)) from exc
     except Exception:
         logger.exception(
             "phase2.live_chat_failed conversation_id=%s auto_extract=%s elapsed_ms=%.2f",

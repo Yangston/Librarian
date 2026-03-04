@@ -60,12 +60,19 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     const requestPromise = (async () => {
-      const response = await fetch(url, {
-        ...init,
-        method,
-        headers,
-        cache: "no-store"
-      });
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          ...init,
+          method,
+          headers,
+          cache: "no-store"
+        });
+      } catch (error) {
+        throw new Error(
+          `Network request failed for ${url}. Verify backend is running and CORS/API base URL are correct.`
+        );
+      }
 
       if (!response.ok) {
         let payload: ApiErrorPayload | null = null;
@@ -95,6 +102,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     method,
     headers
+  }).catch(() => {
+    throw new Error(
+      `Network request failed for ${url}. Verify backend is running and CORS/API base URL are correct.`
+    );
   });
 
   if (!response.ok) {
@@ -240,6 +251,8 @@ export type SemanticSearchData = {
   query: string;
   conversation_id: string | null;
   type_label: string | null;
+  pod_id: number | null;
+  collection_id: number | null;
   start_time: string | null;
   end_time: string | null;
   entities: Array<{ entity: EntityRead; similarity: number }>;
@@ -310,6 +323,8 @@ export type RelationExplainData = {
 
 export type ConversationListItem = {
   conversation_id: string;
+  pod_id: number | null;
+  pod_name: string | null;
   first_message_at: string | null;
   last_message_at: string | null;
   message_count: number;
@@ -408,6 +423,84 @@ export type SchemaOverviewData = {
   proposals: SchemaProposalOverview[];
 };
 
+export type PodRead = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CollectionRead = {
+  id: number;
+  pod_id: number;
+  parent_id: number | null;
+  kind: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  schema_json: Record<string, unknown>;
+  view_config_json: Record<string, unknown>;
+  sort_order: number;
+  is_auto_generated: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CollectionTreeNode = {
+  collection: CollectionRead;
+  children: CollectionTreeNode[];
+};
+
+export type PodTreeData = {
+  pod: PodRead;
+  tree: CollectionTreeNode[];
+};
+
+export type CollectionItemsResponse = {
+  collection: CollectionRead;
+  items: EntityListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  selected_fields: string[];
+  available_fields: string[];
+};
+
+export type CollectionItemMutationResponse = {
+  collection_id: number;
+  entity_id: number;
+  added: boolean;
+};
+
+export type ScopedGraphNode = {
+  entity_id: number;
+  canonical_name: string;
+  display_name: string;
+  type_label: string;
+  external: boolean;
+};
+
+export type ScopedGraphEdge = {
+  relation_id: number;
+  from_entity_id: number;
+  to_entity_id: number;
+  relation_type: string;
+  confidence: number;
+};
+
+export type ScopedGraphData = {
+  scope_mode: "global" | "pod" | "collection";
+  pod_id: number | null;
+  collection_id: number | null;
+  one_hop: boolean;
+  include_external: boolean;
+  nodes: ScopedGraphNode[];
+  edges: ScopedGraphEdge[];
+};
+
 export type ExtractionRunResult = {
   extractor_run_id: number | null;
   conversation_id: string;
@@ -461,11 +554,13 @@ export async function getConversations(params?: {
   limit?: number;
   offset?: number;
   q?: string;
+  pod_id?: number;
 }): Promise<ConversationsListResponse> {
   const query = buildQuery({
     limit: params?.limit ?? 20,
     offset: params?.offset ?? 0,
-    q: params?.q ?? null
+    q: params?.q ?? null,
+    pod_id: params?.pod_id ?? null
   });
   return apiGet<ConversationsListResponse>(`/conversations${query}`);
 }
@@ -483,6 +578,8 @@ export async function getEntitiesCatalog(params?: {
   q?: string;
   type_label?: string;
   fields?: string[];
+  pod_id?: number;
+  collection_id?: number;
 }): Promise<EntityListingResponse> {
   const query = buildQuery({
     limit: params?.limit ?? 25,
@@ -491,7 +588,9 @@ export async function getEntitiesCatalog(params?: {
     order: params?.order ?? "desc",
     q: params?.q ?? null,
     type_label: params?.type_label ?? null,
-    fields: params?.fields && params.fields.length > 0 ? params.fields.join(",") : null
+    fields: params?.fields && params.fields.length > 0 ? params.fields.join(",") : null,
+    pod_id: params?.pod_id ?? null,
+    collection_id: params?.collection_id ?? null
   });
   return apiGet<EntityListingResponse>(`/entities${query}`);
 }
@@ -518,7 +617,7 @@ export async function rerunExtraction(conversationId: string): Promise<Extractio
 
 export async function runLiveChatTurn(
   conversationId: string,
-  payload: { content: string; auto_extract?: boolean; system_prompt?: string }
+  payload: { content: string; pod_id?: number; auto_extract?: boolean; system_prompt?: string }
 ): Promise<LiveChatTurnResult> {
   return apiPost<LiveChatTurnResult>(
     `/conversations/${encodeURIComponent(conversationId)}/chat/turn`,
@@ -542,6 +641,8 @@ export async function runSemanticSearch(params: {
   q: string;
   conversation_id?: string;
   type_label?: string;
+  pod_id?: number;
+  collection_id?: number;
   start_time?: string;
   end_time?: string;
   limit?: number;
@@ -550,6 +651,8 @@ export async function runSemanticSearch(params: {
     q: params.q,
     conversation_id: params.conversation_id ?? null,
     type_label: params.type_label ?? null,
+    pod_id: params.pod_id ?? null,
+    collection_id: params.collection_id ?? null,
     start_time: params.start_time ?? null,
     end_time: params.end_time ?? null,
     limit: params.limit ?? 12
@@ -566,6 +669,92 @@ export async function getSchemaOverview(params?: {
     proposal_limit: params?.proposal_limit ?? 100
   });
   return apiGet<SchemaOverviewData>(`/schema/overview${query}`);
+}
+
+export async function getPods(): Promise<PodRead[]> {
+  return apiGet<PodRead[]>("/pods");
+}
+
+export async function createPod(payload: {
+  name: string;
+  description?: string | null;
+}): Promise<PodRead> {
+  return apiPost<PodRead>("/pods", payload);
+}
+
+export async function deletePod(podId: number): Promise<{
+  pod_id: number;
+  deleted: boolean;
+  conversations_deleted: number;
+}> {
+  return apiDelete<{
+    pod_id: number;
+    deleted: boolean;
+    conversations_deleted: number;
+  }>(`/pods/${podId}`);
+}
+
+export async function getPod(podId: number): Promise<PodRead> {
+  return apiGet<PodRead>(`/pods/${podId}`);
+}
+
+export async function getPodTree(podId: number): Promise<PodTreeData> {
+  return apiGet<PodTreeData>(`/pods/${podId}/tree`);
+}
+
+export async function getCollection(collectionId: number): Promise<CollectionRead> {
+  return apiGet<CollectionRead>(`/collections/${collectionId}`);
+}
+
+export async function getCollectionItems(params: {
+  collection_id: number;
+  limit?: number;
+  offset?: number;
+  sort?: "canonical_name" | "type_label" | "last_seen" | "conversation_count" | "alias_count";
+  order?: "asc" | "desc";
+  q?: string;
+  fields?: string[];
+}): Promise<CollectionItemsResponse> {
+  const query = buildQuery({
+    limit: params.limit ?? 25,
+    offset: params.offset ?? 0,
+    sort: params.sort ?? "last_seen",
+    order: params.order ?? "desc",
+    q: params.q ?? null,
+    fields: params.fields && params.fields.length > 0 ? params.fields.join(",") : null
+  });
+  return apiGet<CollectionItemsResponse>(`/collections/${params.collection_id}/items${query}`);
+}
+
+export async function addCollectionItem(
+  collectionId: number,
+  payload: { entity_id: number; sort_key?: string | null }
+): Promise<CollectionItemMutationResponse> {
+  return apiPost<CollectionItemMutationResponse>(`/collections/${collectionId}/items`, payload);
+}
+
+export async function removeCollectionItem(
+  collectionId: number,
+  entityId: number
+): Promise<CollectionItemMutationResponse> {
+  return apiDelete<CollectionItemMutationResponse>(`/collections/${collectionId}/items/${entityId}`);
+}
+
+export async function getScopedGraph(params?: {
+  scope_mode?: "global" | "pod" | "collection";
+  pod_id?: number;
+  collection_id?: number;
+  one_hop?: boolean;
+  include_external?: boolean;
+}): Promise<ScopedGraphData> {
+  const query = buildQuery({
+    scope_mode: params?.scope_mode ?? "global",
+    pod_id: params?.pod_id ?? null,
+    collection_id: params?.collection_id ?? null,
+    one_hop: params?.one_hop ?? false,
+    include_external: params?.include_external ?? false
+  });
+  return apiGet<ScopedGraphData>(`/graph/scoped${query}`);
 }
 
 export async function getFactExplain(factId: number): Promise<FactExplainData> {
@@ -696,6 +885,7 @@ export function warmWorkspaceApi(): Promise<void> {
   appWarmupPromise = Promise.allSettled([
     getConversations({ limit: 20, offset: 0 }),
     getConversations({ limit: 200, offset: 0 }),
+    getPods(),
     getRecentEntities(12),
     getEntitiesCatalog({ limit: 25, offset: 0, sort: "last_seen", order: "desc" }),
     getSchemaOverview({ limit: 200, proposal_limit: 200 })

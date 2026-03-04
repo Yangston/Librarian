@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowRight, ChartNetwork, MessageSquare, Search, Shapes, Users } from "lucide-react";
+import { ArrowRight, ChartNetwork, FolderKanban, MessageSquare, Search, Shapes, Users } from "lucide-react";
 
 import {
   type ConversationsListResponse,
@@ -34,6 +34,12 @@ const ACTIONS = [
     title: "Graph Studio",
     description: "Hover-preview and pin-edit graph inspector experience.",
     icon: ChartNetwork
+  },
+  {
+    href: "/app/pods",
+    title: "Pods",
+    description: "Browse pod trees and scoped collection records.",
+    icon: FolderKanban
   },
   {
     href: "/app/entities",

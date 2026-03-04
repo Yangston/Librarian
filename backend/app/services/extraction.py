@@ -15,8 +15,10 @@ from app.extraction.extractor_interface import ExtractorInterface
 from app.extraction.llm_extractor import LLMExtractionError, LLMExtractor, OpenAIChatCompletionsClient
 from app.extraction.types import ExtractionResult
 from app.models.conversation_entity_link import ConversationEntityLink
+from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
+from app.models.evidence import Evidence
 from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
@@ -25,6 +27,7 @@ from app.models.relation import Relation
 from app.models.schema_field import SchemaField
 from app.models.schema_node import SchemaNode
 from app.models.schema_relation import SchemaRelation
+from app.models.source import Source
 from app.schema.predicate_registry import PredicateRegistry
 from app.schemas.extraction import ExtractionRunResult
 from app.services.embeddings import (
@@ -33,6 +36,8 @@ from app.services.embeddings import (
     ensure_embedding,
     hash_embed_text,
 )
+from app.services.conversations import get_conversation_pod_id
+from app.services.organization import rebuild_pod_themes_for_conversation
 from app.services.schema_stabilization import run_schema_stabilization
 
 logger = logging.getLogger(__name__)
@@ -226,9 +231,11 @@ def _replace_extracted_records(
             assignment.extracted_index
         ]
     local_entity_ids = {entity.id for entity in entities_by_index.values()}
+    conversation_pod_id = get_conversation_pod_id(db, conversation_id)
     global_merge_audits = _apply_global_entity_matching(
         db,
         conversation_id=conversation_id,
+        pod_id=conversation_pod_id,
         canonical_entity_by_cluster=canonical_entity_by_cluster,
         local_entity_ids=local_entity_ids,
     )
@@ -275,6 +282,7 @@ def _replace_extracted_records(
     fact_embedding_rows: list[tuple[Fact, str]] = []
 
     facts_created = 0
+    persisted_facts: list[Fact] = []
     for extracted_fact in result.facts:
         cluster_index = resolution_plan.resolve_reference(
             extracted_fact.entity_name,
@@ -298,6 +306,7 @@ def _replace_extracted_records(
             extractor_run_id=extractor_run_id,
         )
         db.add(fact_row)
+        persisted_facts.append(fact_row)
         fact_embedding_rows.append(
             (
                 fact_row,
@@ -316,6 +325,7 @@ def _replace_extracted_records(
         facts_created += 1
 
     relations_created = 0
+    persisted_relations: list[Relation] = []
     for extracted_relation in result.relations:
         from_cluster_index = resolution_plan.resolve_reference(
             extracted_relation.from_entity,
@@ -338,25 +348,36 @@ def _replace_extracted_records(
         )
         qualifiers = dict(extracted_relation.qualifiers)
         qualifiers.setdefault("extraction_confidence", extracted_relation.confidence)
-        db.add(
-            Relation(
-                conversation_id=conversation_id,
-                from_entity_id=from_entity.id,
-                relation_type=relation_type_decision.canonical_predicate,
-                to_entity_id=to_entity.id,
-                scope="conversation",
-                confidence=extracted_relation.confidence,
-                qualifiers_json=qualifiers,
-                source_message_ids_json=extracted_relation.source_message_ids,
-                extractor_run_id=extractor_run_id,
-            )
+        relation_row = Relation(
+            conversation_id=conversation_id,
+            from_entity_id=from_entity.id,
+            relation_type=relation_type_decision.canonical_predicate,
+            to_entity_id=to_entity.id,
+            scope="conversation",
+            confidence=extracted_relation.confidence,
+            qualifiers_json=qualifiers,
+            source_message_ids_json=extracted_relation.source_message_ids,
+            extractor_run_id=extractor_run_id,
         )
+        db.add(relation_row)
+        persisted_relations.append(relation_row)
         _record_schema_observation(
             relation_observations,
             label=relation_type_decision.canonical_predicate,
             example=f"{from_entity.canonical_name} {relation_type_decision.canonical_predicate} {to_entity.canonical_name}",
         )
         relations_created += 1
+
+    db.flush()
+
+    source_id_by_message_id = _ensure_sources_for_messages(db, messages=messages)
+    _sync_evidence_for_claims(
+        db,
+        facts=persisted_facts,
+        relations=persisted_relations,
+        source_id_by_message_id=source_id_by_message_id,
+        message_by_id={message.id: message for message in messages},
+    )
 
     _upsert_conversation_entity_links(
         db,
@@ -365,6 +386,10 @@ def _replace_extracted_records(
         resolution_plan=resolution_plan,
         canonical_entity_by_cluster=canonical_entity_by_cluster,
     )
+    # Theme synthesis reads conversation entity links via SQL queries; flush first
+    # because some test sessions run with autoflush disabled.
+    db.flush()
+    rebuild_pod_themes_for_conversation(db, conversation_id=conversation_id)
     if post_processing_mode == "inline":
         _apply_embeddings_on_write(
             entity_embeddings=entity_embedding_rows,
@@ -571,21 +596,137 @@ def _apply_embeddings_on_write(
         row.embedding = vectors[idx]
 
 
+def _ensure_sources_for_messages(db: Session, *, messages: list[Message]) -> dict[int, int]:
+    message_ids = [message.id for message in messages if message.id is not None]
+    if not message_ids:
+        return {}
+    source_rows = list(
+        db.execute(
+            select(Source.id, Source.message_id).where(Source.message_id.in_(message_ids))
+        ).all()
+    )
+    source_id_by_message_id = {
+        int(message_id): int(source_id)
+        for source_id, message_id in source_rows
+        if message_id is not None
+    }
+    for message in messages:
+        if message.id in source_id_by_message_id:
+            continue
+        source = Source(
+            conversation_id=message.conversation_id,
+            source_kind="message",
+            message_id=message.id,
+            title=f"{message.role} message #{message.id}",
+            payload_json={
+                "role": message.role,
+                "timestamp": message.timestamp.isoformat() if message.timestamp is not None else None,
+            },
+        )
+        db.add(source)
+        db.flush()
+        source_id_by_message_id[int(message.id)] = int(source.id)
+    return source_id_by_message_id
+
+
+def _sync_evidence_for_claims(
+    db: Session,
+    *,
+    facts: list[Fact],
+    relations: list[Relation],
+    source_id_by_message_id: dict[int, int],
+    message_by_id: dict[int, Message],
+) -> None:
+    for fact in facts:
+        for message_id in fact.source_message_ids_json or []:
+            if not isinstance(message_id, int):
+                continue
+            source_id = source_id_by_message_id.get(message_id)
+            if source_id is None:
+                continue
+            existing = db.scalar(
+                select(Evidence.id).where(
+                    Evidence.source_id == source_id,
+                    Evidence.fact_id == fact.id,
+                    Evidence.relation_id.is_(None),
+                    Evidence.message_id == message_id,
+                )
+            )
+            if existing is not None:
+                continue
+            content = message_by_id.get(message_id).content if message_id in message_by_id else None
+            db.add(
+                Evidence(
+                    source_id=source_id,
+                    fact_id=fact.id,
+                    relation_id=None,
+                    message_id=message_id,
+                    snippet=_truncate_snippet(content),
+                    confidence=fact.confidence,
+                    meta_json={"origin": "extraction"},
+                )
+            )
+    for relation in relations:
+        for message_id in relation.source_message_ids_json or []:
+            if not isinstance(message_id, int):
+                continue
+            source_id = source_id_by_message_id.get(message_id)
+            if source_id is None:
+                continue
+            existing = db.scalar(
+                select(Evidence.id).where(
+                    Evidence.source_id == source_id,
+                    Evidence.relation_id == relation.id,
+                    Evidence.fact_id.is_(None),
+                    Evidence.message_id == message_id,
+                )
+            )
+            if existing is not None:
+                continue
+            content = message_by_id.get(message_id).content if message_id in message_by_id else None
+            db.add(
+                Evidence(
+                    source_id=source_id,
+                    fact_id=None,
+                    relation_id=relation.id,
+                    message_id=message_id,
+                    snippet=_truncate_snippet(content),
+                    confidence=relation.confidence,
+                    meta_json={"origin": "extraction"},
+                )
+            )
+    db.flush()
+
+
+def _truncate_snippet(content: str | None, *, max_len: int = 280) -> str | None:
+    if not content:
+        return None
+    normalized = " ".join(content.strip().split())
+    if len(normalized) <= max_len:
+        return normalized
+    return f"{normalized[: max_len - 3]}..."
+
+
 def _apply_global_entity_matching(
     db: Session,
     *,
     conversation_id: str,
+    pod_id: int | None,
     canonical_entity_by_cluster: dict[int, Entity],
     local_entity_ids: set[int],
 ) -> list[EntityMergeAudit]:
     settings = get_settings()
     max_candidates = max(50, int(settings.global_resolution_max_candidates))
+    if pod_id is None:
+        return []
+    pod_conversation_ids = select(Conversation.conversation_id).where(Conversation.pod_id == pod_id)
     global_candidates = list(
         db.scalars(
             select(Entity)
             .where(
                 Entity.merged_into_id.is_(None),
                 Entity.conversation_id != conversation_id,
+                Entity.conversation_id.in_(pod_conversation_ids),
                 ~Entity.id.in_(sorted(local_entity_ids)),
             )
             .order_by(Entity.id.desc())

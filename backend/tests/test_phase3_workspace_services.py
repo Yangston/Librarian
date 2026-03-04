@@ -13,18 +13,25 @@ from app.extraction.extractor_interface import ExtractorInterface
 from app.extraction.types import ExtractedEntity, ExtractedFact, ExtractedRelation, ExtractionResult
 from app.models.base import Base
 from app.models.conversation_entity_link import ConversationEntityLink
+from app.models.collection import Collection
+from app.models.collection_item import CollectionItem
+from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
+from app.models.evidence import Evidence
 from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
 from app.models.predicate_registry_entry import PredicateRegistryEntry
+from app.models.pod import Pod
 from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
 from app.models.schema_field import SchemaField
 from app.models.schema_node import SchemaNode
 from app.models.schema_proposal import SchemaProposal
 from app.models.schema_relation import SchemaRelation
+from app.models.source import Source
+from app.models.workspace_edge import WorkspaceEdge
 from app.schemas.message import MessageCreate
 from app.services.extraction import run_extraction_for_conversation
 from app.services.messages import create_messages
@@ -148,6 +155,32 @@ class Phase3WorkspaceServiceTests(unittest.TestCase):
         self.assertIn("sentiment", entities_catalog.selected_fields)
         apple_row = next(row for row in entities_catalog.items if row.canonical_name == "Apple Inc.")
         self.assertEqual(apple_row.dynamic_fields.get("sentiment"), "positive")
+        pod = self.db.scalar(select(Pod).order_by(Pod.id.asc()))
+        assert pod is not None
+        apple_entity = self.db.scalar(select(Entity).where(Entity.canonical_name == "Apple Inc."))
+        assert apple_entity is not None
+        scoped_collection = self.db.scalar(
+            select(Collection)
+            .join(CollectionItem, CollectionItem.collection_id == Collection.id)
+            .where(
+                Collection.pod_id == pod.id,
+                Collection.is_auto_generated.is_(True),
+                CollectionItem.entity_id == apple_entity.id,
+            )
+            .order_by(Collection.id.asc())
+        )
+        assert scoped_collection is not None
+        collection_filtered = list_entities_catalog(
+            self.db,
+            limit=25,
+            offset=0,
+            sort="last_seen",
+            order="desc",
+            pod_id=pod.id,
+            collection_id=scoped_collection.id,
+        )
+        self.assertGreaterEqual(collection_filtered.total, 1)
+        self.assertIn("Apple Inc.", {row.canonical_name for row in collection_filtered.items})
 
         schema_overview = get_schema_overview(self.db, per_section_limit=100, proposal_limit=20)
         self.assertGreaterEqual(len(schema_overview.nodes), 1)
@@ -207,6 +240,13 @@ class Phase3WorkspaceServiceTests(unittest.TestCase):
         run_extraction_for_conversation(self.db, conversation_id, extractor=_WorkspaceStubExtractor())
 
     def _reset_tables(self) -> None:
+        self.db.execute(delete(Evidence))
+        self.db.execute(delete(Source))
+        self.db.execute(delete(WorkspaceEdge))
+        self.db.execute(delete(CollectionItem))
+        self.db.execute(delete(Collection))
+        self.db.execute(delete(Conversation))
+        self.db.execute(delete(Pod))
         self.db.execute(delete(SchemaProposal))
         self.db.execute(delete(SchemaRelation))
         self.db.execute(delete(SchemaField))

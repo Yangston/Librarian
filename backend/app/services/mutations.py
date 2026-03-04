@@ -12,18 +12,24 @@ from sqlalchemy.orm import Session, aliased
 from app.extraction.extractor_interface import ExtractorInterface
 from app.extraction.types import ExtractedEntity, ExtractedFact, ExtractedRelation, ExtractionResult
 from app.models.conversation_entity_link import ConversationEntityLink
+from app.models.collection_item import CollectionItem
+from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
+from app.models.evidence import Evidence
 from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
 from app.models.predicate_registry_entry import PredicateRegistryEntry
+from app.models.pod import Pod
 from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
 from app.models.schema_field import SchemaField
 from app.models.schema_node import SchemaNode
 from app.models.schema_proposal import SchemaProposal
 from app.models.schema_relation import SchemaRelation
+from app.models.source import Source
+from app.models.workspace_edge import WorkspaceEdge
 from app.schemas.entity import EntityRead
 from app.schemas.fact import FactRead, FactWithSubjectRead
 from app.schemas.mutations import (
@@ -40,6 +46,7 @@ from app.schemas.mutations import (
 )
 from app.schemas.relation import RelationRead, RelationWithEntitiesRead
 from app.services.extraction import run_extraction_for_conversation
+from app.services.organization import rebuild_pod_themes
 
 
 def update_message(db: Session, message_id: int, payload: MessageUpdateRequest) -> Message | None:
@@ -64,6 +71,10 @@ def delete_message(db: Session, message_id: int) -> bool:
     if message is None:
         return False
     conversation_id = message.conversation_id
+    db.execute(delete(Evidence).where(Evidence.message_id == message_id))
+    source_ids_for_message = select(Source.id).where(Source.message_id == message_id)
+    db.execute(delete(Evidence).where(Evidence.source_id.in_(source_ids_for_message)))
+    db.execute(delete(Source).where(Source.message_id == message_id))
     db.delete(message)
     db.flush()
 
@@ -98,6 +109,7 @@ def delete_conversation(db: Session, conversation_id: str) -> bool:
         return False
 
     _clear_conversation_derived_state(db, clean_conversation_id, clear_messages=True)
+    db.execute(delete(Conversation).where(Conversation.conversation_id == clean_conversation_id))
     _rebuild_global_derived_state(db)
     db.commit()
     return True
@@ -145,13 +157,24 @@ def delete_entity(db: Session, entity_id: int) -> bool:
     if entity is None:
         return False
 
+    fact_ids = select(Fact.id).where(Fact.subject_entity_id == entity_id)
+    relation_ids = select(Relation.id).where(
+        or_(Relation.from_entity_id == entity_id, Relation.to_entity_id == entity_id)
+    )
+    db.execute(delete(Evidence).where(Evidence.fact_id.in_(fact_ids)))
+    db.execute(delete(Evidence).where(Evidence.relation_id.in_(relation_ids)))
     db.execute(delete(Fact).where(Fact.subject_entity_id == entity_id))
+    db.execute(delete(Relation).where(or_(Relation.from_entity_id == entity_id, Relation.to_entity_id == entity_id)))
+    db.execute(delete(ConversationEntityLink).where(ConversationEntityLink.entity_id == entity_id))
+    db.execute(delete(CollectionItem).where(CollectionItem.entity_id == entity_id))
     db.execute(
-        delete(Relation).where(
-            or_(Relation.from_entity_id == entity_id, Relation.to_entity_id == entity_id)
+        delete(WorkspaceEdge).where(
+            WorkspaceEdge.src_kind == "collection",
+            WorkspaceEdge.dst_kind == "entity",
+            WorkspaceEdge.dst_id == entity_id,
+            WorkspaceEdge.namespace == "workspace",
         )
     )
-    db.execute(delete(ConversationEntityLink).where(ConversationEntityLink.entity_id == entity_id))
     db.execute(update(Entity).where(Entity.merged_into_id == entity_id).values(merged_into_id=None))
     db.delete(entity)
     db.commit()
@@ -463,17 +486,32 @@ def _conversation_has_any_records(db: Session, conversation_id: str) -> bool:
             is not None,
             db.scalar(select(Entity.id).where(Entity.conversation_id == conversation_id).limit(1))
             is not None,
+            db.scalar(
+                select(Conversation.conversation_id).where(Conversation.conversation_id == conversation_id).limit(1)
+            )
+            is not None,
         ]
     )
 
 
 def _clear_conversation_derived_state(db: Session, conversation_id: str, *, clear_messages: bool) -> None:
+    fact_ids = select(Fact.id).where(Fact.conversation_id == conversation_id)
+    relation_ids = select(Relation.id).where(Relation.conversation_id == conversation_id)
+    message_ids = select(Message.id).where(Message.conversation_id == conversation_id)
+    source_ids = select(Source.id).where(Source.conversation_id == conversation_id)
+
+    db.execute(delete(Evidence).where(Evidence.fact_id.in_(fact_ids)))
+    db.execute(delete(Evidence).where(Evidence.relation_id.in_(relation_ids)))
+    db.execute(delete(Evidence).where(Evidence.message_id.in_(message_ids)))
+    db.execute(delete(Evidence).where(Evidence.source_id.in_(source_ids)))
+
     db.execute(delete(Relation).where(Relation.conversation_id == conversation_id))
     db.execute(delete(Fact).where(Fact.conversation_id == conversation_id))
     db.execute(delete(ConversationEntityLink).where(ConversationEntityLink.conversation_id == conversation_id))
     db.execute(delete(ResolutionEvent).where(ResolutionEvent.conversation_id == conversation_id))
     db.execute(delete(EntityMergeAudit).where(EntityMergeAudit.conversation_id == conversation_id))
     db.execute(delete(ExtractorRun).where(ExtractorRun.conversation_id == conversation_id))
+    db.execute(delete(Source).where(Source.conversation_id == conversation_id))
     if clear_messages:
         db.execute(delete(Message).where(Message.conversation_id == conversation_id))
     db.flush()
@@ -629,7 +667,14 @@ def _rebuild_global_derived_state(db: Session) -> None:
             )
         )
 
+    _reconcile_organization_memberships(db)
     db.flush()
+
+
+def _reconcile_organization_memberships(db: Session) -> None:
+    pod_ids = list(db.scalars(select(Pod.id).order_by(Pod.id.asc())).all())
+    for pod_id in pod_ids:
+        rebuild_pod_themes(db, pod_id=int(pod_id))
 
 
 def _build_filtered_replay_result(

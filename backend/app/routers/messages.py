@@ -1,11 +1,16 @@
 """Message ingestion and retrieval routes."""
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
 from app.schemas.common import ApiResponse
 from app.schemas.message import MessageRead, MessagesIngestRequest
+from app.services.conversations import (
+    ConversationPodConflictError,
+    ConversationPodNotFoundError,
+    ConversationPodRequiredError,
+)
 from app.services.messages import create_messages, list_messages
 
 
@@ -20,7 +25,20 @@ def ingest_messages(
 ) -> ApiResponse[list[MessageRead]]:
     """Store a conversation message batch."""
 
-    created = create_messages(db, conversation_id, payload.messages)
+    try:
+        created = create_messages(
+            db,
+            conversation_id,
+            payload.messages,
+            pod_id=payload.pod_id,
+            require_pod_for_new=True,
+        )
+    except ConversationPodRequiredError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ConversationPodNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConversationPodConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ApiResponse(data=[MessageRead.model_validate(message) for message in created])
 
 
@@ -33,4 +51,3 @@ def get_messages(
 
     records = list_messages(db, conversation_id)
     return ApiResponse(data=[MessageRead.model_validate(message) for message in records])
-

@@ -7,6 +7,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.collection import Collection
+from app.models.collection_item import CollectionItem
 from app.models.entity import Entity
 from app.models.fact import Fact
 from app.models.message import Message
@@ -22,6 +24,8 @@ def semantic_search(
     query: str,
     conversation_id: str | None = None,
     type_label: str | None = None,
+    pod_id: int | None = None,
+    collection_id: int | None = None,
     start_time: datetime | None = None,
     end_time: datetime | None = None,
     limit: int = 10,
@@ -33,6 +37,8 @@ def semantic_search(
             query=query,
             conversation_id=conversation_id,
             type_label=type_label,
+            pod_id=pod_id,
+            collection_id=collection_id,
             start_time=start_time,
             end_time=end_time,
             entities=[],
@@ -45,6 +51,8 @@ def semantic_search(
             query=query,
             conversation_id=conversation_id,
             type_label=type_label,
+            pod_id=pod_id,
+            collection_id=collection_id,
             start_time=start_time,
             end_time=end_time,
             entities=[],
@@ -58,6 +66,8 @@ def semantic_search(
         query_vector,
         conversation_id=conversation_id,
         type_label=clean_type_label,
+        pod_id=pod_id,
+        collection_id=collection_id,
         start_time=start_time,
         end_time=end_time,
         limit=limit,
@@ -67,6 +77,8 @@ def semantic_search(
         query_vector,
         conversation_id=conversation_id,
         type_label=clean_type_label,
+        pod_id=pod_id,
+        collection_id=collection_id,
         start_time=start_time,
         end_time=end_time,
         limit=limit,
@@ -75,6 +87,8 @@ def semantic_search(
         query=clean_query,
         conversation_id=conversation_id,
         type_label=clean_type_label,
+        pod_id=pod_id,
+        collection_id=collection_id,
         start_time=start_time,
         end_time=end_time,
         entities=entity_hits,
@@ -88,11 +102,20 @@ def _search_entities(
     *,
     conversation_id: str | None,
     type_label: str | None,
+    pod_id: int | None,
+    collection_id: int | None,
     start_time: datetime | None,
     end_time: datetime | None,
     limit: int,
 ) -> list[EntitySearchHit]:
     conditions = [Entity.embedding.is_not(None), Entity.merged_into_id.is_(None)]
+    if pod_id is not None or collection_id is not None:
+        scope_query = select(CollectionItem.entity_id).join(Collection, Collection.id == CollectionItem.collection_id)
+        if pod_id is not None:
+            scope_query = scope_query.where(Collection.pod_id == pod_id)
+        if collection_id is not None:
+            scope_query = scope_query.where(CollectionItem.collection_id == collection_id)
+        conditions.append(Entity.id.in_(scope_query))
     if conversation_id:
         conditions.append(Entity.conversation_id == conversation_id)
     if type_label:
@@ -146,6 +169,8 @@ def _search_facts(
     *,
     conversation_id: str | None,
     type_label: str | None,
+    pod_id: int | None,
+    collection_id: int | None,
     start_time: datetime | None,
     end_time: datetime | None,
     limit: int,
@@ -155,6 +180,13 @@ def _search_facts(
         .join(Entity, Entity.id == Fact.subject_entity_id)
         .where(Fact.embedding.is_not(None))
     )
+    if pod_id is not None or collection_id is not None:
+        scope_query = select(CollectionItem.entity_id).join(Collection, Collection.id == CollectionItem.collection_id)
+        if pod_id is not None:
+            scope_query = scope_query.where(Collection.pod_id == pod_id)
+        if collection_id is not None:
+            scope_query = scope_query.where(CollectionItem.collection_id == collection_id)
+        stmt = stmt.where(Fact.subject_entity_id.in_(scope_query))
     if conversation_id:
         stmt = stmt.where(Fact.conversation_id == conversation_id)
     if type_label:
@@ -167,6 +199,15 @@ def _search_facts(
         if db.get_bind().dialect.name == "postgresql":
             distance_expr = Fact.embedding.cosine_distance(query_vector).label("distance")
             query_conditions = [Fact.embedding.is_not(None)]
+            if pod_id is not None or collection_id is not None:
+                scope_query = select(CollectionItem.entity_id).join(
+                    Collection, Collection.id == CollectionItem.collection_id
+                )
+                if pod_id is not None:
+                    scope_query = scope_query.where(Collection.pod_id == pod_id)
+                if collection_id is not None:
+                    scope_query = scope_query.where(CollectionItem.collection_id == collection_id)
+                query_conditions.append(Fact.subject_entity_id.in_(scope_query))
             if conversation_id is not None:
                 query_conditions.append(Fact.conversation_id == conversation_id)
             if type_label is not None:

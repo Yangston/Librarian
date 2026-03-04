@@ -17,6 +17,7 @@ class MessageCreate(BaseModel):
 class MessagesIngestRequest(BaseModel):
     """Conversation ingestion payload."""
 
+    pod_id: int | None = Field(default=None, ge=1)
     messages: list[MessageCreate] = Field(default_factory=list, min_length=1)
 
 

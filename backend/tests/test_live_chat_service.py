@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.extraction.extractor_interface import ExtractorInterface
 from app.extraction.types import ExtractedEntity, ExtractedFact, ExtractionResult
 from app.models.base import Base
+from app.models.conversation import Conversation
 from app.models.conversation_entity_link import ConversationEntityLink
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
@@ -20,9 +21,11 @@ from app.models.fact import Fact
 from app.models.message import Message
 from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
+from app.models.pod import Pod
 from app.schemas.message import MessageCreate
-from app.services.live_chat import run_live_chat_turn
+from app.services.live_chat import LiveChatError, run_live_chat_turn
 from app.services.messages import create_messages
+from app.services.organization import create_pod
 
 
 class _StubExtractor(ExtractorInterface):
@@ -94,7 +97,11 @@ class LiveChatServiceTests(unittest.TestCase):
         self.db.execute(delete(EntityMergeAudit))
         self.db.execute(delete(Entity))
         self.db.execute(delete(Message))
+        self.db.execute(delete(Conversation))
+        self.db.execute(delete(Pod))
         self.db.commit()
+        pod = create_pod(self.db, name="Live Chat Pod", description=None)
+        self.pod_id = pod.id
 
     def tearDown(self) -> None:
         self.db.close()
@@ -111,6 +118,8 @@ class LiveChatServiceTests(unittest.TestCase):
                     timestamp=datetime(2026, 2, 25, 10, 0, tzinfo=timezone.utc),
                 )
             ],
+            pod_id=self.pod_id,
+            require_pod_for_new=True,
         )
 
         chat_client = _StubChatClient("Apple Inc. could face margin pressure from supply chain constraints.")
@@ -118,6 +127,7 @@ class LiveChatServiceTests(unittest.TestCase):
             self.db,
             conversation_id,
             user_content="What is the risk to AAPL margins?",
+            pod_id=self.pod_id,
             auto_extract=True,
             chat_client=chat_client,
             extractor=_StubExtractor(),
@@ -149,6 +159,7 @@ class LiveChatServiceTests(unittest.TestCase):
             self.db,
             conversation_id,
             user_content="Hello",
+            pod_id=self.pod_id,
             auto_extract=False,
             chat_client=chat_client,
         )
@@ -156,6 +167,37 @@ class LiveChatServiceTests(unittest.TestCase):
         self.assertIsNone(result.extraction)
         self.assertEqual(len(chat_client.calls), 1)
         self.assertEqual(chat_client.calls[0][0]["role"], "system")
+
+    def test_live_chat_turn_requires_pod_for_new_conversation(self) -> None:
+        with self.assertRaises(LiveChatError):
+            run_live_chat_turn(
+                self.db,
+                "live-chat-test-003",
+                user_content="Hello",
+                pod_id=None,
+                auto_extract=False,
+                chat_client=_StubChatClient("Short answer."),
+            )
+
+    def test_live_chat_turn_rejects_mismatched_pod_for_existing_conversation(self) -> None:
+        other_pod = create_pod(self.db, name="Other Pod", description=None)
+        create_messages(
+            self.db,
+            "live-chat-test-004",
+            [MessageCreate(role="user", content="existing conversation")],
+            pod_id=self.pod_id,
+            require_pod_for_new=True,
+        )
+
+        with self.assertRaises(LiveChatError):
+            run_live_chat_turn(
+                self.db,
+                "live-chat-test-004",
+                user_content="Follow up",
+                pod_id=other_pod.id,
+                auto_extract=False,
+                chat_client=_StubChatClient("Short answer."),
+            )
 
 
 if __name__ == "__main__":

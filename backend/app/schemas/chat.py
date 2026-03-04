@@ -10,6 +10,7 @@ class LiveChatTurnRequest(BaseModel):
     """Request payload for one live chat turn."""
 
     content: str = Field(min_length=1)
+    pod_id: int | None = Field(default=None, ge=1)
     auto_extract: bool = True
     system_prompt: str | None = None
 

@@ -28,6 +28,8 @@ class SemanticSearchData(BaseModel):
     query: str
     conversation_id: str | None
     type_label: str | None
+    pod_id: int | None = None
+    collection_id: int | None = None
     start_time: datetime | None
     end_time: datetime | None
     entities: list[EntitySearchHit]

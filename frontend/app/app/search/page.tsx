@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Filter, Search as SearchIcon } from "lucide-react";
 
-import { type SemanticSearchData, runSemanticSearch } from "../../../lib/api";
+import {
+  type CollectionTreeNode,
+  getPodTree,
+  getPods,
+  type SemanticSearchData,
+  runSemanticSearch
+} from "../../../lib/api";
 import { formatScore, formatTimestamp } from "../../../lib/format";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -29,11 +35,23 @@ function toEndTimestamp(dateValue: string): string | undefined {
   return `${dateValue}T23:59:59Z`;
 }
 
+function parseOptionalInt(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export default function SearchPage() {
   const router = useRouter();
   const [queryDraft, setQueryDraft] = useState("");
   const [conversationScope, setConversationScope] = useState("");
   const [typeLabel, setTypeLabel] = useState("");
+  const [podScope, setPodScope] = useState("");
+  const [collectionScope, setCollectionScope] = useState("");
+  const [pods, setPods] = useState<Array<{ id: number; name: string }>>([]);
+  const [collections, setCollections] = useState<Array<{ id: number; name: string }>>([]);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [loading, setLoading] = useState(false);
@@ -44,6 +62,8 @@ export default function SearchPage() {
     query: string;
     conversationScope?: string;
     typeLabel?: string;
+    podScope?: string;
+    collectionScope?: string;
     fromDate?: string;
     toDate?: string;
   }) {
@@ -59,6 +79,8 @@ export default function SearchPage() {
         q: clean,
         conversation_id: params.conversationScope?.trim() || undefined,
         type_label: params.typeLabel?.trim() || undefined,
+        pod_id: parseOptionalInt(params.podScope?.trim()),
+        collection_id: parseOptionalInt(params.collectionScope?.trim()),
         start_time: toStartTimestamp(params.fromDate ?? ""),
         end_time: toEndTimestamp(params.toDate ?? ""),
         limit: 20
@@ -72,6 +94,12 @@ export default function SearchPage() {
       }
       if (params.typeLabel?.trim()) {
         query.set("type_label", params.typeLabel.trim());
+      }
+      if (params.podScope?.trim()) {
+        query.set("pod_id", params.podScope.trim());
+      }
+      if (params.collectionScope?.trim()) {
+        query.set("collection_id", params.collectionScope.trim());
       }
       if (params.fromDate?.trim()) {
         query.set("from", params.fromDate.trim());
@@ -88,15 +116,73 @@ export default function SearchPage() {
   }
 
   useEffect(() => {
+    let active = true;
+    async function loadPods() {
+      try {
+        const podRows = await getPods();
+        if (!active) {
+          return;
+        }
+        setPods(podRows.map((pod) => ({ id: pod.id, name: pod.name })));
+      } catch {
+        // Keep search usable if pod APIs are unavailable.
+      }
+    }
+    void loadPods();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!podScope.trim()) {
+      setCollections([]);
+      setCollectionScope("");
+      return;
+    }
+    let active = true;
+    async function loadCollections() {
+      try {
+        const payload = await getPodTree(Number.parseInt(podScope, 10));
+        if (!active) {
+          return;
+        }
+        const flat: Array<{ id: number; name: string }> = [];
+        const walk = (nodes: CollectionTreeNode[]) => {
+          nodes.forEach((node) => {
+            flat.push({ id: node.collection.id, name: node.collection.name });
+            walk(node.children);
+          });
+        };
+        walk(payload.tree);
+        setCollections(flat);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setCollections([]);
+      }
+    }
+    void loadCollections();
+    return () => {
+      active = false;
+    };
+  }, [podScope]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const initialQuery = params.get("q") ?? "";
     const initialScope = params.get("conversation_id") ?? "";
     const initialType = params.get("type_label") ?? "";
+    const initialPod = params.get("pod_id") ?? "";
+    const initialCollection = params.get("collection_id") ?? "";
     const initialFrom = params.get("from") ?? "";
     const initialTo = params.get("to") ?? "";
     setQueryDraft(initialQuery);
     setConversationScope(initialScope);
     setTypeLabel(initialType);
+    setPodScope(initialPod);
+    setCollectionScope(initialCollection);
     setFromDate(initialFrom);
     setToDate(initialTo);
     if (initialQuery.trim()) {
@@ -104,6 +190,8 @@ export default function SearchPage() {
         query: initialQuery,
         conversationScope: initialScope || undefined,
         typeLabel: initialType || undefined,
+        podScope: initialPod || undefined,
+        collectionScope: initialCollection || undefined,
         fromDate: initialFrom || undefined,
         toDate: initialTo || undefined
       });
@@ -117,6 +205,8 @@ export default function SearchPage() {
       query: queryDraft,
       conversationScope,
       typeLabel,
+      podScope,
+      collectionScope,
       fromDate,
       toDate
     });
@@ -138,7 +228,7 @@ export default function SearchPage() {
               <Link href="/app/entities">Browse Entities</Link>
             </Button>
           </div>
-          <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-6" onSubmit={handleSubmit}>
+          <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-8" onSubmit={handleSubmit}>
             <div className="space-y-1.5 xl:col-span-2">
               <Label htmlFor="search-query">Query</Label>
               <Input
@@ -165,6 +255,40 @@ export default function SearchPage() {
                 value={typeLabel}
                 onChange={(event) => setTypeLabel(event.target.value)}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="search-pod">Pod</Label>
+              <Input
+                id="search-pod"
+                list="search-pod-list"
+                placeholder="pod id"
+                value={podScope}
+                onChange={(event) => setPodScope(event.target.value)}
+              />
+              <datalist id="search-pod-list">
+                {pods.map((pod) => (
+                  <option key={pod.id} value={String(pod.id)}>
+                    {pod.name}
+                  </option>
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="search-collection">Collection</Label>
+              <Input
+                id="search-collection"
+                list="search-collection-list"
+                placeholder="collection id"
+                value={collectionScope}
+                onChange={(event) => setCollectionScope(event.target.value)}
+              />
+              <datalist id="search-collection-list">
+                {collections.map((collection) => (
+                  <option key={collection.id} value={String(collection.id)}>
+                    {collection.name}
+                  </option>
+                ))}
+              </datalist>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="search-from">From Date</Label>
@@ -214,6 +338,8 @@ export default function SearchPage() {
               </Badge>
               <Badge variant="outline">Conversation: {result.conversation_id ?? "-"}</Badge>
               <Badge variant="outline">Type: {result.type_label ?? "-"}</Badge>
+              <Badge variant="outline">Pod: {result.pod_id ?? "-"}</Badge>
+              <Badge variant="outline">Collection: {result.collection_id ?? "-"}</Badge>
               <Badge variant="outline">From: {formatTimestamp(result.start_time)}</Badge>
               <Badge variant="outline">To: {formatTimestamp(result.end_time)}</Badge>
             </CardContent>

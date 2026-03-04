@@ -13,18 +13,25 @@ from app.extraction.extractor_interface import ExtractorInterface
 from app.extraction.types import ExtractedEntity, ExtractedFact, ExtractedRelation, ExtractionResult
 from app.models.base import Base
 from app.models.conversation_entity_link import ConversationEntityLink
+from app.models.collection import Collection
+from app.models.collection_item import CollectionItem
+from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
+from app.models.evidence import Evidence
 from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
 from app.models.predicate_registry_entry import PredicateRegistryEntry
+from app.models.pod import Pod
 from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
 from app.models.schema_field import SchemaField
 from app.models.schema_node import SchemaNode
 from app.models.schema_proposal import SchemaProposal
 from app.models.schema_relation import SchemaRelation
+from app.models.source import Source
+from app.models.workspace_edge import WorkspaceEdge
 from app.schemas.message import MessageCreate
 from app.schemas.mutations import (
     EntityUpdateRequest,
@@ -266,6 +273,23 @@ class Phase3MutationsAndGraphTests(unittest.TestCase):
             select(Entity).where(Entity.conversation_id == conversation_id, Entity.canonical_name == "Apple Inc.")
         )
         assert apple is not None
+        self.assertGreaterEqual(
+            len(list(self.db.scalars(select(CollectionItem).where(CollectionItem.entity_id == apple.id)).all())),
+            1,
+        )
+        self.assertGreaterEqual(
+            len(
+                list(
+                    self.db.scalars(
+                        select(WorkspaceEdge).where(
+                            WorkspaceEdge.dst_kind == "entity",
+                            WorkspaceEdge.dst_id == apple.id,
+                        )
+                    ).all()
+                )
+            ),
+            1,
+        )
         updated_entity = update_entity(
             self.db,
             apple.id,
@@ -306,6 +330,23 @@ class Phase3MutationsAndGraphTests(unittest.TestCase):
         self.assertIsNone(self.db.scalar(select(Fact).where(Fact.id == fact.id)))
         self.assertTrue(delete_entity(self.db, apple.id))
         self.assertIsNone(self.db.scalar(select(Entity).where(Entity.id == apple.id)))
+        self.assertEqual(
+            0,
+            len(list(self.db.scalars(select(CollectionItem).where(CollectionItem.entity_id == apple.id)).all())),
+        )
+        self.assertEqual(
+            0,
+            len(
+                list(
+                    self.db.scalars(
+                        select(WorkspaceEdge).where(
+                            WorkspaceEdge.dst_kind == "entity",
+                            WorkspaceEdge.dst_id == apple.id,
+                        )
+                    ).all()
+                )
+            ),
+        )
 
         schema_node = self.db.scalar(select(SchemaNode).where(SchemaNode.label == "Company"))
         assert schema_node is not None
@@ -615,6 +656,13 @@ class Phase3MutationsAndGraphTests(unittest.TestCase):
         self.assertEqual(remaining_entity.canonical_name, "Second Only Co.")
 
     def _reset_tables(self) -> None:
+        self.db.execute(delete(Evidence))
+        self.db.execute(delete(Source))
+        self.db.execute(delete(WorkspaceEdge))
+        self.db.execute(delete(CollectionItem))
+        self.db.execute(delete(Collection))
+        self.db.execute(delete(Conversation))
+        self.db.execute(delete(Pod))
         self.db.execute(delete(SchemaProposal))
         self.db.execute(delete(SchemaRelation))
         self.db.execute(delete(SchemaField))

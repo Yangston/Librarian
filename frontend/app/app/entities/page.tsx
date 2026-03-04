@@ -4,9 +4,12 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  type CollectionTreeNode,
   type EntityListingResponse,
   deleteEntityRecord,
   getEntitiesCatalog,
+  getPods,
+  getPodTree,
   updateEntityRecord
 } from "../../../lib/api";
 import { formatTimestamp } from "../../../lib/format";
@@ -30,12 +33,19 @@ const PAGE_SIZE = 25;
 
 type SortKey = "canonical_name" | "type_label" | "last_seen" | "conversation_count" | "alias_count";
 type SortOrder = "asc" | "desc";
+type CollectionOption = { id: number; name: string };
 
 export default function EntitiesPage() {
   const [queryDraft, setQueryDraft] = useState("");
   const [typeDraft, setTypeDraft] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
   const [appliedType, setAppliedType] = useState("");
+  const [podOptions, setPodOptions] = useState<Array<{ id: number; name: string }>>([]);
+  const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
+  const [podDraft, setPodDraft] = useState("__all__");
+  const [collectionDraft, setCollectionDraft] = useState("__all__");
+  const [appliedPodId, setAppliedPodId] = useState<number | null>(null);
+  const [appliedCollectionId, setAppliedCollectionId] = useState<number | null>(null);
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [sort, setSort] = useState<SortKey>("last_seen");
   const [order, setOrder] = useState<SortOrder>("desc");
@@ -50,6 +60,61 @@ export default function EntitiesPage() {
   const [editDraft, setEditDraft] = useState({ canonical_name: "", type_label: "" });
   const [pendingDeleteEntityId, setPendingDeleteEntityId] = useState<number | null>(null);
   const hasLoadedOnceRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPods() {
+      try {
+        const pods = await getPods();
+        if (!active) {
+          return;
+        }
+        setPodOptions(pods.map((pod) => ({ id: pod.id, name: pod.name })));
+      } catch {
+        // Keep entity table usable even if pod endpoints fail.
+      }
+    }
+    void loadPods();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (podDraft === "__all__") {
+      setCollectionOptions([]);
+      setCollectionDraft("__all__");
+      return;
+    }
+    let active = true;
+    async function loadCollections() {
+      try {
+        const tree = await getPodTree(Number.parseInt(podDraft, 10));
+        if (!active) {
+          return;
+        }
+        const flat: CollectionOption[] = [];
+        const walk = (nodes: CollectionTreeNode[]) => {
+          nodes.forEach((node) => {
+            flat.push({ id: node.collection.id, name: node.collection.name });
+            walk(node.children);
+          });
+        };
+        walk(tree.tree);
+        setCollectionOptions(flat);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setCollectionOptions([]);
+      }
+      setCollectionDraft("__all__");
+    }
+    void loadCollections();
+    return () => {
+      active = false;
+    };
+  }, [podDraft]);
 
   useEffect(() => {
     let active = true;
@@ -68,7 +133,9 @@ export default function EntitiesPage() {
           order,
           q: appliedQuery || undefined,
           type_label: appliedType || undefined,
-          fields: selectedFields
+          fields: selectedFields,
+          pod_id: appliedPodId ?? undefined,
+          collection_id: appliedCollectionId ?? undefined
         });
         if (!active) {
           return;
@@ -91,13 +158,28 @@ export default function EntitiesPage() {
     return () => {
       active = false;
     };
-  }, [appliedQuery, appliedType, offset, order, refreshNonce, selectedFields, sort]);
+  }, [
+    appliedCollectionId,
+    appliedPodId,
+    appliedQuery,
+    appliedType,
+    offset,
+    order,
+    refreshNonce,
+    selectedFields,
+    sort
+  ]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setOffset(0);
     setAppliedQuery(queryDraft.trim());
     setAppliedType(typeDraft.trim());
+    const nextPodId = podDraft === "__all__" ? null : Number.parseInt(podDraft, 10);
+    const nextCollectionId =
+      collectionDraft === "__all__" ? null : Number.parseInt(collectionDraft, 10);
+    setAppliedPodId(Number.isFinite(nextPodId ?? NaN) ? nextPodId : null);
+    setAppliedCollectionId(Number.isFinite(nextCollectionId ?? NaN) ? nextCollectionId : null);
   }
 
   function toggleField(field: string) {
@@ -197,7 +279,10 @@ export default function EntitiesPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <form className="grid gap-3 md:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto] md:items-end" onSubmit={applyFilters}>
+          <form
+            className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_auto] md:items-end"
+            onSubmit={applyFilters}
+          >
             <label className="field">
               <Label>Search</Label>
               <Input
@@ -238,6 +323,38 @@ export default function EntitiesPage() {
                 <SelectContent>
                   <SelectItem value="desc">Descending</SelectItem>
                   <SelectItem value="asc">Ascending</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="field">
+              <Label>Pod</Label>
+              <Select value={podDraft} onValueChange={setPodDraft}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All pods</SelectItem>
+                  {podOptions.map((pod) => (
+                    <SelectItem key={pod.id} value={String(pod.id)}>
+                      {pod.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="field">
+              <Label>Collection</Label>
+              <Select value={collectionDraft} onValueChange={setCollectionDraft}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All collections</SelectItem>
+                  {collectionOptions.map((collection) => (
+                    <SelectItem key={collection.id} value={String(collection.id)}>
+                      {collection.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </label>

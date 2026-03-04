@@ -20,13 +20,18 @@ import {
   SelectValue
 } from "../../../components/ui/select";
 import {
+  type CollectionTreeNode,
   type ConversationGraphData,
   type ConversationsListResponse,
+  type PodRead,
   type RelationWithEntitiesRead,
   deleteEntityRecord,
   deleteRelation,
   getConversationGraph,
   getConversations,
+  getPodTree,
+  getPods,
+  getScopedGraph,
   updateEntityRecord,
   updateRelation
 } from "../../../lib/api";
@@ -37,10 +42,60 @@ function normalizeTypeLabel(typeLabel: string): string {
   return clean.length > 0 ? clean : "untyped";
 }
 
+function mapScopedGraphToConversationGraph(payload: Awaited<ReturnType<typeof getScopedGraph>>): ConversationGraphData {
+  const nodeById = new Map(payload.nodes.map((node) => [node.entity_id, node]));
+  const now = new Date().toISOString();
+  return {
+    conversation_id: `workspace:${payload.scope_mode}`,
+    entities: payload.nodes.map((node) => ({
+      id: node.entity_id,
+      conversation_id: `workspace:${payload.scope_mode}`,
+      name: node.canonical_name,
+      display_name: node.display_name,
+      canonical_name: node.canonical_name,
+      type: node.type_label || "Unspecified",
+      type_label: node.type_label || "Unspecified",
+      aliases_json: [],
+      known_aliases_json: [],
+      tags_json: node.external ? ["external"] : [],
+      first_seen_timestamp: now,
+      resolution_confidence: 1,
+      resolution_reason: null,
+      resolver_version: null,
+      merged_into_id: null,
+      created_at: now,
+      updated_at: now
+    })),
+    relations: payload.edges.map((edge) => ({
+      id: edge.relation_id,
+      conversation_id: `workspace:${payload.scope_mode}`,
+      from_entity_id: edge.from_entity_id,
+      from_entity_name: nodeById.get(edge.from_entity_id)?.canonical_name ?? String(edge.from_entity_id),
+      relation_type: edge.relation_type,
+      to_entity_id: edge.to_entity_id,
+      to_entity_name: nodeById.get(edge.to_entity_id)?.canonical_name ?? String(edge.to_entity_id),
+      scope: "global",
+      confidence: edge.confidence,
+      qualifiers_json: {},
+      source_message_ids_json: [],
+      extractor_run_id: null,
+      created_at: now
+    }))
+  };
+}
+
 export default function GraphPage() {
+  const [viewMode, setViewMode] = useState<"conversation" | "workspace">("conversation");
   const [conversationList, setConversationList] = useState<ConversationsListResponse | null>(null);
   const [conversationInput, setConversationInput] = useState("");
   const [conversationId, setConversationId] = useState("");
+  const [workspaceScopeMode, setWorkspaceScopeMode] = useState<"global" | "pod" | "collection">("global");
+  const [scopePodId, setScopePodId] = useState<string>("__none__");
+  const [scopeCollectionId, setScopeCollectionId] = useState<string>("__none__");
+  const [oneHopScope, setOneHopScope] = useState(false);
+  const [includeExternalScope, setIncludeExternalScope] = useState(false);
+  const [pods, setPods] = useState<PodRead[]>([]);
+  const [scopeCollections, setScopeCollections] = useState<CollectionTreeNode[]>([]);
   const [graph, setGraph] = useState<ConversationGraphData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<number | null>(null);
@@ -57,8 +112,12 @@ export default function GraphPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nodeDraft, setNodeDraft] = useState({ canonical_name: "", type_label: "" });
+  const [nodeDraftError, setNodeDraftError] = useState<string | null>(null);
+  const [isGraphFullscreen, setIsGraphFullscreen] = useState(false);
 
   const canvasRef = useRef<ConversationGraphCanvasHandle | null>(null);
+  const graphPanelRef = useRef<HTMLDivElement | null>(null);
   const loadedConversationRef = useRef<string | null>(null);
 
   async function loadConversations(queryConversationId: string | null) {
@@ -73,6 +132,11 @@ export default function GraphPage() {
       setConversationInput(conversations.items[0].conversation_id);
       setConversationId(conversations.items[0].conversation_id);
     }
+  }
+
+  async function loadPods() {
+    const podRows = await getPods();
+    setPods(podRows);
   }
 
   const clearLayoutState = useCallback(() => {
@@ -97,7 +161,7 @@ export default function GraphPage() {
     });
   }, []);
 
-  const loadGraph = useCallback(
+  const loadConversationGraph = useCallback(
     async (targetConversationId: string) => {
       const cleanConversationId = targetConversationId.trim();
       if (!cleanConversationId) {
@@ -128,22 +192,77 @@ export default function GraphPage() {
     [clearLayoutState, pruneStalePositions]
   );
 
+  const loadWorkspaceGraph = useCallback(
+    async ({
+      scopeMode,
+      podId,
+      collectionId,
+      oneHop,
+      includeExternal
+    }: {
+      scopeMode: "global" | "pod" | "collection";
+      podId?: number;
+      collectionId?: number;
+      oneHop: boolean;
+      includeExternal: boolean;
+    }) => {
+      const payload = await getScopedGraph({
+        scope_mode: scopeMode,
+        pod_id: podId,
+        collection_id: collectionId,
+        one_hop: oneHop,
+        include_external: includeExternal
+      });
+      const mapped = mapScopedGraphToConversationGraph(payload);
+      const graphKey = `${payload.scope_mode}:${payload.pod_id ?? "none"}:${payload.collection_id ?? "none"}:${
+        payload.one_hop ? "1" : "0"
+      }:${payload.include_external ? "1" : "0"}`;
+      const conversationChanged = loadedConversationRef.current !== graphKey;
+      loadedConversationRef.current = graphKey;
+      if (conversationChanged) {
+        clearLayoutState();
+      } else {
+        pruneStalePositions(mapped);
+      }
+      setGraph(mapped);
+      setHoveredNodeId(null);
+      setSelectedNodeId((current) =>
+        current !== null && mapped.entities.some((entity) => entity.id === current) ? current : null
+      );
+    },
+    [clearLayoutState, pruneStalePositions]
+  );
+
   useEffect(() => {
     let active = true;
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const queryConversationId =
-          typeof window === "undefined"
-            ? null
-            : new URLSearchParams(window.location.search).get("conversation_id")?.trim() || null;
+        const query = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
+        const queryConversationId = query.get("conversation_id")?.trim() || null;
+        const queryScopeMode = query.get("scope_mode")?.trim() || null;
+        const queryPodId = query.get("pod_id")?.trim() || null;
+        const queryCollectionId = query.get("collection_id")?.trim() || null;
+        const queryOneHop = query.get("one_hop");
+        const queryIncludeExternal = query.get("include_external");
         await loadConversations(queryConversationId);
+        await loadPods();
+        if (queryScopeMode === "global" || queryScopeMode === "pod" || queryScopeMode === "collection") {
+          setViewMode("workspace");
+          setWorkspaceScopeMode(queryScopeMode);
+          setScopePodId(queryPodId || "__none__");
+          setScopeCollectionId(queryCollectionId || "__none__");
+          setOneHopScope(queryOneHop === "true" || queryOneHop === "1");
+          setIncludeExternalScope(queryIncludeExternal === "true" || queryIncludeExternal === "1");
+        } else {
+          setViewMode("conversation");
+        }
       } catch (err) {
         if (!active) {
           return;
         }
-        setError(err instanceof Error ? err.message : "Failed to load conversations.");
+        setError(err instanceof Error ? err.message : "Failed to load graph controls.");
       } finally {
         if (active) {
           setLoading(false);
@@ -158,15 +277,47 @@ export default function GraphPage() {
   }, []);
 
   useEffect(() => {
+    if (scopePodId === "__none__") {
+      setScopeCollections([]);
+      if (workspaceScopeMode === "collection") {
+        setScopeCollectionId("__none__");
+      }
+      return;
+    }
+    let active = true;
+    async function loadScopeCollections() {
+      try {
+        const payload = await getPodTree(Number.parseInt(scopePodId, 10));
+        if (!active) {
+          return;
+        }
+        setScopeCollections(payload.tree);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setScopeCollections([]);
+      }
+    }
+    void loadScopeCollections();
+    return () => {
+      active = false;
+    };
+  }, [scopePodId, workspaceScopeMode]);
+
+  useEffect(() => {
     let active = true;
     async function hydrateGraph() {
+      if (viewMode !== "conversation") {
+        return;
+      }
       if (!conversationId.trim()) {
         return;
       }
       setLoading(true);
       setError(null);
       try {
-        await loadGraph(conversationId);
+        await loadConversationGraph(conversationId);
       } catch (err) {
         if (!active) {
           return;
@@ -182,12 +333,23 @@ export default function GraphPage() {
     return () => {
       active = false;
     };
-  }, [conversationId, loadGraph]);
+  }, [conversationId, loadConversationGraph, viewMode]);
 
   const relationLabels = useMemo(
     () => Array.from(new Set((graph?.relations ?? []).map((relation) => relation.relation_type))).sort(),
     [graph?.relations]
   );
+  const scopeCollectionOptions = useMemo(() => {
+    const flat: Array<{ id: number; name: string }> = [];
+    const walk = (nodes: CollectionTreeNode[]) => {
+      nodes.forEach((node) => {
+        flat.push({ id: node.collection.id, name: node.collection.name });
+        walk(node.children);
+      });
+    };
+    walk(scopeCollections);
+    return flat;
+  }, [scopeCollections]);
 
   const visibleEntities = useMemo(() => {
     const source = graph?.entities ?? [];
@@ -262,33 +424,123 @@ export default function GraphPage() {
 
   const isPinnedInspector = selectedNodeId !== null && selectedNode?.id === selectedNodeId;
 
-  const refreshGraph = useCallback(async () => {
-    if (!conversationId.trim()) {
+  useEffect(() => {
+    if (!pinnedNode) {
+      setNodeDraft({ canonical_name: "", type_label: "" });
+      setNodeDraftError(null);
       return;
     }
-    await loadGraph(conversationId.trim());
-  }, [conversationId, loadGraph]);
+    setNodeDraft({
+      canonical_name: pinnedNode.canonical_name,
+      type_label: pinnedNode.type_label || "untyped"
+    });
+    setNodeDraftError(null);
+  }, [pinnedNode]);
 
-  async function handleSelectConversation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const clean = conversationInput.trim();
-    if (!clean) {
+  const refreshGraph = useCallback(async () => {
+    if (viewMode === "conversation") {
+      if (!conversationId.trim()) {
+        return;
+      }
+      await loadConversationGraph(conversationId.trim());
       return;
     }
-    setConversationInput(clean);
-    if (clean === conversationId) {
+    const podId = scopePodId === "__none__" ? undefined : Number.parseInt(scopePodId, 10);
+    const collectionId =
+      scopeCollectionId === "__none__" ? undefined : Number.parseInt(scopeCollectionId, 10);
+    await loadWorkspaceGraph({
+      scopeMode: workspaceScopeMode,
+      podId,
+      collectionId,
+      oneHop: oneHopScope,
+      includeExternal: includeExternalScope
+    });
+  }, [
+    conversationId,
+    includeExternalScope,
+    loadConversationGraph,
+    loadWorkspaceGraph,
+    oneHopScope,
+    scopeCollectionId,
+    scopePodId,
+    viewMode,
+    workspaceScopeMode
+  ]);
+
+  useEffect(() => {
+    let active = true;
+    async function hydrateWorkspaceGraph() {
+      if (viewMode !== "workspace") {
+        return;
+      }
+      if (workspaceScopeMode === "pod" && scopePodId === "__none__") {
+        return;
+      }
+      if (workspaceScopeMode === "collection" && scopeCollectionId === "__none__") {
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
-        await loadGraph(clean);
+        await refreshGraph();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load graph.");
+        if (!active) {
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Failed to load scoped graph.");
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
+    }
+    void hydrateWorkspaceGraph();
+    return () => {
+      active = false;
+    };
+  }, [refreshGraph, scopeCollectionId, scopePodId, viewMode, workspaceScopeMode]);
+
+  async function handleLoadGraph(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (viewMode === "conversation") {
+      const clean = conversationInput.trim();
+      if (!clean) {
+        return;
+      }
+      setConversationInput(clean);
+      if (clean === conversationId) {
+        setLoading(true);
+        setError(null);
+        try {
+          await loadConversationGraph(clean);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to load graph.");
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+      setConversationId(clean);
       return;
     }
-    setConversationId(clean);
+
+    if (workspaceScopeMode === "pod" && scopePodId === "__none__") {
+      setError("Select a pod for pod scope.");
+      return;
+    }
+    if (workspaceScopeMode === "collection" && scopeCollectionId === "__none__") {
+      setError("Select a collection for collection scope.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await refreshGraph();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load scoped graph.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const handleNodeHover = useCallback((nodeId: number | null) => {
@@ -303,6 +555,30 @@ export default function GraphPage() {
       return current === nodeId ? null : nodeId;
     });
   }, []);
+
+  useEffect(() => {
+    if (selectedNodeId === null) {
+      return;
+    }
+    const handleDocumentPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (!target) {
+        return;
+      }
+      if (target.closest(".graphInspector")) {
+        return;
+      }
+      if (target.closest(".graphCySurface")) {
+        return;
+      }
+      setSelectedNodeId(null);
+    };
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+    };
+  }, [selectedNodeId]);
 
   const handleNodePositionChange = useCallback((nodeId: number, position: GraphNodePosition) => {
     setNodePositions((current) => {
@@ -321,23 +597,44 @@ export default function GraphPage() {
     });
   }, []);
 
-  const handleInlineSaveNode = useCallback(
-    async (nodeId: number, payload: { canonical_name: string; type_label: string }) => {
-      setSaving(true);
-      setError(null);
-      try {
-        await updateEntityRecord(nodeId, payload);
-        await refreshGraph();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to update node.";
-        setError(message);
-        throw new Error(message);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [refreshGraph]
-  );
+  const handleSavePinnedNode = useCallback(async () => {
+    if (!pinnedNode) {
+      return;
+    }
+    const nextCanonicalName = nodeDraft.canonical_name.trim();
+    const nextTypeLabel = nodeDraft.type_label.trim();
+    if (!nextCanonicalName || !nextTypeLabel) {
+      setNodeDraftError("Node name and type label are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setNodeDraftError(null);
+    try {
+      await updateEntityRecord(pinnedNode.id, {
+        canonical_name: nextCanonicalName,
+        type_label: nextTypeLabel
+      });
+      await refreshGraph();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update node.";
+      setError(message);
+      setNodeDraftError(message);
+    } finally {
+      setSaving(false);
+    }
+  }, [nodeDraft.canonical_name, nodeDraft.type_label, pinnedNode, refreshGraph]);
+
+  const handleResetPinnedNodeDraft = useCallback(() => {
+    if (!pinnedNode) {
+      return;
+    }
+    setNodeDraft({
+      canonical_name: pinnedNode.canonical_name,
+      type_label: pinnedNode.type_label || "untyped"
+    });
+    setNodeDraftError(null);
+  }, [pinnedNode]);
 
   function beginRelationEdit(relation: RelationWithEntitiesRead) {
     setEditingRelationId(relation.id);
@@ -444,6 +741,32 @@ export default function GraphPage() {
     clearLayoutState();
   }
 
+  async function toggleGraphFullscreen() {
+    const panel = graphPanelRef.current;
+    if (!panel) {
+      return;
+    }
+    try {
+      if (document.fullscreenElement === panel) {
+        await document.exitFullscreen();
+        return;
+      }
+      await panel.requestFullscreen();
+    } catch {
+      setError("Fullscreen is not available in this browser context.");
+    }
+  }
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsGraphFullscreen(document.fullscreenElement === graphPanelRef.current);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
   return (
     <div className="graphWorkspace routeFade">
       <Card className="border-border/80 bg-card/95">
@@ -456,21 +779,89 @@ export default function GraphPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <form className="graphTopbar" onSubmit={handleSelectConversation}>
+          <form className="graphTopbar" onSubmit={handleLoadGraph}>
             <label className="field">
-              <Label>Conversation</Label>
-              <Input
-                list="conversation-list"
-                value={conversationInput}
-                onChange={(event) => setConversationInput(event.target.value)}
-                placeholder="conversation id"
-              />
-              <datalist id="conversation-list">
-                {(conversationList?.items ?? []).map((item) => (
-                  <option key={item.conversation_id} value={item.conversation_id} />
-                ))}
-              </datalist>
+              <Label>View Mode</Label>
+              <Select value={viewMode} onValueChange={(value) => setViewMode(value as "conversation" | "workspace")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="conversation">Conversation</SelectItem>
+                  <SelectItem value="workspace">Workspace Scope</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
+            <label className="field">
+              <Label>{viewMode === "conversation" ? "Conversation" : "Scope"}</Label>
+              {viewMode === "conversation" ? (
+                <>
+                  <Input
+                    list="conversation-list"
+                    value={conversationInput}
+                    onChange={(event) => setConversationInput(event.target.value)}
+                    placeholder="conversation id"
+                  />
+                  <datalist id="conversation-list">
+                    {(conversationList?.items ?? []).map((item) => (
+                      <option key={item.conversation_id} value={item.conversation_id} />
+                    ))}
+                  </datalist>
+                </>
+              ) : (
+                <Select
+                  value={workspaceScopeMode}
+                  onValueChange={(value) =>
+                    setWorkspaceScopeMode(value as "global" | "pod" | "collection")
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">Global</SelectItem>
+                    <SelectItem value="pod">Pod</SelectItem>
+                    <SelectItem value="collection">Collection</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </label>
+            {viewMode === "workspace" ? (
+              <label className="field">
+                <Label>Pod</Label>
+                <Select value={scopePodId} onValueChange={setScopePodId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">(none)</SelectItem>
+                    {pods.map((pod) => (
+                      <SelectItem key={pod.id} value={String(pod.id)}>
+                        {pod.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : null}
+            {viewMode === "workspace" ? (
+              <label className="field">
+                <Label>Collection</Label>
+                <Select value={scopeCollectionId} onValueChange={setScopeCollectionId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">(none)</SelectItem>
+                    {scopeCollectionOptions.map((collection) => (
+                      <SelectItem key={collection.id} value={String(collection.id)}>
+                        {collection.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : null}
             <label className="field">
               <Label>Node Filter</Label>
               <Input
@@ -514,6 +905,40 @@ export default function GraphPage() {
                 </SelectContent>
               </Select>
             </label>
+            {viewMode === "workspace" ? (
+              <>
+                <label className="field">
+                  <Label>Collection 1-hop</Label>
+                  <Select
+                    value={oneHopScope ? "true" : "false"}
+                    onValueChange={(value) => setOneHopScope(value === "true")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="false">Disabled</SelectItem>
+                      <SelectItem value="true">Enabled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="field">
+                  <Label>Include External</Label>
+                  <Select
+                    value={includeExternalScope ? "true" : "false"}
+                    onValueChange={(value) => setIncludeExternalScope(value === "true")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="false">No</SelectItem>
+                      <SelectItem value="true">Yes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+              </>
+            ) : null}
             <Button type="submit" disabled={loading}>
               Load Graph
             </Button>
@@ -533,10 +958,14 @@ export default function GraphPage() {
         </Card>
       ) : graph ? (
         <section className="graphStudioGrid">
-          <Card className="graphCanvasPanel border-border/80 bg-card/95 p-4">
+          <Card ref={graphPanelRef} className="graphCanvasPanel border-border/80 bg-card/95 p-4">
             <div className="sectionTitleRow">
               <h3>Graph Canvas</h3>
-              <Link href={`/app/conversations/${encodeURIComponent(graph.conversation_id)}`}>Open conversation</Link>
+              {viewMode === "conversation" ? (
+                <Link href={`/app/conversations/${encodeURIComponent(graph.conversation_id)}`}>Open conversation</Link>
+              ) : (
+                <span className="subtle">Workspace-scoped graph</span>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline">Nodes: {visibleEntities.length}</Badge>
@@ -567,6 +996,9 @@ export default function GraphPage() {
               >
                 Clear pin
               </Button>
+              <Button type="button" variant="outline" onClick={() => void toggleGraphFullscreen()}>
+                {isGraphFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              </Button>
             </div>
             <div className="graphLegend">
               <span className="legendItem">
@@ -588,14 +1020,12 @@ export default function GraphPage() {
               relations={visibleRelations}
               activeNodeId={activeNodeId}
               selectedNodeId={selectedNodeId}
-              selectedNode={pinnedNode}
               highlightRelation={highlightRelation}
               positions={nodePositions}
               resetToken={layoutResetToken}
               onNodeHover={handleNodeHover}
               onNodeSelect={handleNodeSelect}
               onNodePositionChange={handleNodePositionChange}
-              onInlineSave={handleInlineSaveNode}
             />
           </Card>
 
@@ -616,14 +1046,58 @@ export default function GraphPage() {
                   </p>
                   <p className="subtle">Aliases: {selectedNode.known_aliases_json.join(", ") || "(none)"}</p>
                   {isPinnedInspector ? (
-                    <div className="toolbar">
-                      <Link href={`/app/entities/${selectedNode.id}`}>Open entity page</Link>
-                      <DeleteActionButton type="button" onClick={requestDeleteNode} disabled={saving}>
-                        Delete node
-                      </DeleteActionButton>
-                    </div>
+                    <>
+                      <form
+                        className="gridForm"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleSavePinnedNode();
+                        }}
+                      >
+                        <label className="field">
+                          <span>Name</span>
+                          <Input
+                            value={nodeDraft.canonical_name}
+                            onChange={(event) =>
+                              setNodeDraft((current) => ({ ...current, canonical_name: event.target.value }))
+                            }
+                            disabled={saving}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Type</span>
+                          <Input
+                            value={nodeDraft.type_label}
+                            onChange={(event) =>
+                              setNodeDraft((current) => ({ ...current, type_label: event.target.value }))
+                            }
+                            disabled={saving}
+                          />
+                        </label>
+                        <div className="inlineActions">
+                          <Button type="submit" disabled={saving}>
+                            Save node
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleResetPinnedNodeDraft}
+                            disabled={saving}
+                          >
+                            Reset
+                          </Button>
+                        </div>
+                      </form>
+                      {nodeDraftError ? <p className="errorText">{nodeDraftError}</p> : null}
+                      <div className="toolbar">
+                        <Link href={`/app/entities/${selectedNode.id}`}>Open entity page</Link>
+                        <DeleteActionButton type="button" onClick={requestDeleteNode} disabled={saving}>
+                          Delete node
+                        </DeleteActionButton>
+                      </div>
+                    </>
                   ) : (
-                    <p className="subtle">Click this node to pin it. Name/type editing is available inline on canvas.</p>
+                    <p className="subtle">Click this node to pin it. Name/type editing is available in this panel.</p>
                   )}
                 </div>
 

@@ -24,6 +24,7 @@ def get_conversations(
     limit: int = ConversationLimitParam,
     offset: int = ConversationOffsetParam,
     q: str | None = Query(default=None),
+    pod_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> ApiResponse[ConversationsListResponse]:
     """List known conversations ordered by most recent activity."""
@@ -33,6 +34,7 @@ def get_conversations(
         limit=limit,
         offset=offset,
         query=q,
+        pod_id=pod_id,
     )
     return ApiResponse(data=payload)
 
@@ -56,6 +58,8 @@ def get_entities_catalog(
     q: str | None = Query(default=None),
     type_label: str | None = Query(default=None),
     fields: str | None = Query(default=None),
+    pod_id: int | None = Query(default=None, ge=1),
+    collection_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> ApiResponse[EntityListingResponse]:
     """Return global entity table rows with optional dynamic field columns."""
@@ -70,6 +74,8 @@ def get_entities_catalog(
         query=q,
         type_label=type_label,
         selected_fields=selected_fields,
+        pod_id=pod_id,
+        collection_id=collection_id,
     )
     return ApiResponse(data=payload)
 

@@ -8,19 +8,26 @@ from threading import Lock
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.models.collection import Collection
+from app.models.collection_item import CollectionItem
+from app.models.conversation import Conversation
 from app.models.conversation_entity_link import ConversationEntityLink
 from app.models.entity import Entity
 from app.models.entity_merge_audit import EntityMergeAudit
+from app.models.evidence import Evidence
 from app.models.extractor_run import ExtractorRun
 from app.models.fact import Fact
 from app.models.message import Message
 from app.models.predicate_registry_entry import PredicateRegistryEntry
+from app.models.pod import Pod
 from app.models.resolution_event import ResolutionEvent
 from app.models.relation import Relation
 from app.models.schema_field import SchemaField
 from app.models.schema_node import SchemaNode
 from app.models.schema_proposal import SchemaProposal
 from app.models.schema_relation import SchemaRelation
+from app.models.source import Source
+from app.models.workspace_edge import WorkspaceEdge
 from app.schemas.entity_listing import EntityListItem, EntityListingResponse
 from app.schemas.workspace import (
     ConversationListItem,
@@ -44,6 +51,7 @@ def list_conversations(
     limit: int,
     offset: int,
     query: str | None = None,
+    pod_id: int | None = None,
 ) -> ConversationsListResponse:
     """Return paginated conversations ordered by latest activity."""
 
@@ -87,14 +95,21 @@ def list_conversations(
     )
 
     filter_term = (query or "").strip()
-    base = select(message_stats.c.conversation_id)
+    base = select(message_stats.c.conversation_id).outerjoin(
+        Conversation,
+        Conversation.conversation_id == message_stats.c.conversation_id,
+    )
     if filter_term:
         base = base.where(message_stats.c.conversation_id.ilike(f"%{filter_term}%"))
+    if pod_id is not None:
+        base = base.where(Conversation.pod_id == pod_id)
     total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
 
     stmt = (
         select(
             message_stats.c.conversation_id,
+            Conversation.pod_id.label("pod_id"),
+            Pod.name.label("pod_name"),
             message_stats.c.first_message_at,
             message_stats.c.last_message_at,
             message_stats.c.message_count,
@@ -107,17 +122,23 @@ def list_conversations(
         .outerjoin(fact_counts, fact_counts.c.conversation_id == message_stats.c.conversation_id)
         .outerjoin(relation_counts, relation_counts.c.conversation_id == message_stats.c.conversation_id)
         .outerjoin(run_counts, run_counts.c.conversation_id == message_stats.c.conversation_id)
+        .outerjoin(Conversation, Conversation.conversation_id == message_stats.c.conversation_id)
+        .outerjoin(Pod, Pod.id == Conversation.pod_id)
         .order_by(message_stats.c.last_message_at.desc(), message_stats.c.conversation_id.desc())
         .limit(limit)
         .offset(offset)
     )
     if filter_term:
         stmt = stmt.where(message_stats.c.conversation_id.ilike(f"%{filter_term}%"))
+    if pod_id is not None:
+        stmt = stmt.where(Conversation.pod_id == pod_id)
 
     rows = db.execute(stmt).all()
     items = [
         ConversationListItem(
             conversation_id=row.conversation_id,
+            pod_id=int(row.pod_id) if row.pod_id is not None else None,
+            pod_name=str(row.pod_name) if row.pod_name is not None else None,
             first_message_at=row.first_message_at,
             last_message_at=row.last_message_at,
             message_count=int(row.message_count or 0),
@@ -181,6 +202,8 @@ def list_entities_catalog(
     query: str | None = None,
     type_label: str | None = None,
     selected_fields: list[str] | None = None,
+    pod_id: int | None = None,
+    collection_id: int | None = None,
 ) -> EntityListingResponse:
     """Return global entities table rows with optional dynamic fact columns."""
 
@@ -207,6 +230,13 @@ def list_entities_catalog(
     clean_type = (type_label or "").strip()
     if clean_type:
         filters.append(Entity.type_label == clean_type)
+    if pod_id is not None or collection_id is not None:
+        scope_query = select(CollectionItem.entity_id).join(Collection, Collection.id == CollectionItem.collection_id)
+        if pod_id is not None:
+            scope_query = scope_query.where(Collection.pod_id == pod_id)
+        if collection_id is not None:
+            scope_query = scope_query.where(CollectionItem.collection_id == collection_id)
+        filters.append(Entity.id.in_(scope_query))
 
     total_stmt = select(func.count()).select_from(select(Entity.id).where(*filters).subquery())
     total = int(db.scalar(total_stmt) or 0)
@@ -443,6 +473,8 @@ def _ensure_workspace_empty_state_consistent(db: Session) -> None:
                 db.scalar(select(Entity.id).limit(1)) is not None,
                 db.scalar(select(Fact.id).limit(1)) is not None,
                 db.scalar(select(Relation.id).limit(1)) is not None,
+                db.scalar(select(Source.id).limit(1)) is not None,
+                db.scalar(select(Evidence.id).limit(1)) is not None,
                 db.scalar(select(ConversationEntityLink.id).limit(1)) is not None,
                 db.scalar(select(ExtractorRun.id).limit(1)) is not None,
                 db.scalar(select(ResolutionEvent.id).limit(1)) is not None,
@@ -458,6 +490,8 @@ def _ensure_workspace_empty_state_consistent(db: Session) -> None:
             _empty_state_verified = True
             return
 
+        db.execute(delete(Evidence))
+        db.execute(delete(Source))
         db.execute(delete(SchemaProposal))
         db.execute(delete(SchemaRelation))
         db.execute(delete(SchemaField))

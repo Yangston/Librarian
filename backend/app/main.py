@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.config import get_settings
 from app.db.session import SessionLocal
 from app.routers import (
     database,
@@ -16,6 +17,7 @@ from app.routers import (
     live_chat,
     messages,
     mutations,
+    organization,
     schema,
     search,
     workspace,
@@ -58,10 +60,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Librarian API", version="0.1.0", lifespan=lifespan)
+settings = get_settings()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=settings.cors_allowed_origins,
+    allow_origin_regex=settings.cors_allowed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -78,6 +82,7 @@ app.include_router(search.router, tags=["search"])
 app.include_router(workspace.router, tags=["workspace"])
 app.include_router(knowledge.router, tags=["knowledge"])
 app.include_router(mutations.router, tags=["mutations"])
+app.include_router(organization.router, tags=["organization"])
 
 
 @app.get("/health")

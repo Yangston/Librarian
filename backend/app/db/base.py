@@ -1,28 +1,42 @@
 """SQLAlchemy metadata registry import for Alembic."""
 
 from app.models import (
+    Collection,
+    CollectionItem,
+    Conversation,
     ConversationEntityLink,
     Entity,
     EntityMergeAudit,
+    Evidence,
     ExtractorRun,
     Fact,
     Message,
     PredicateRegistryEntry,
+    Pod,
     ResolutionEvent,
     Relation,
     SchemaField,
     SchemaNode,
     SchemaProposal,
     SchemaRelation,
+    Source,
+    WorkspaceEdge,
 )
 from app.models.base import Base
 
 __all__ = [
     "Base",
     "Message",
+    "Conversation",
     "ConversationEntityLink",
+    "Pod",
+    "Collection",
+    "CollectionItem",
+    "WorkspaceEdge",
     "Entity",
     "EntityMergeAudit",
+    "Source",
+    "Evidence",
     "ExtractorRun",
     "PredicateRegistryEntry",
     "ResolutionEvent",
