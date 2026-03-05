@@ -59,9 +59,38 @@
       radial-gradient(circle at 92% 0%, rgba(17, 75, 132, 0.12), transparent 35%),
       linear-gradient(180deg, #f5fbfa, var(--bg));
   }
+
+  .dark body {
+    background:
+      radial-gradient(circle at 8% 10%, rgba(42, 185, 171, 0.16), transparent 42%),
+      radial-gradient(circle at 92% 0%, rgba(58, 110, 185, 0.14), transparent 35%),
+      linear-gradient(180deg, #0f1a1b, var(--bg));
+  }
+
   .dark {
+    --background: #0f1717;
+    --foreground: #e4f0ee;
+    --card: #152122;
+    --card-foreground: #e4f0ee;
     --popover: #0f172a;
     --popover-foreground: #f8fafc;
+    --primary: #2ab9ab;
+    --primary-foreground: #072624;
+    --secondary: #203133;
+    --secondary-foreground: #dbe9e7;
+    --muted: #243739;
+    --muted-foreground: #a2b4b4;
+    --accent: #2ab9ab;
+    --accent-foreground: #072624;
+    --destructive: #d66c6c;
+    --destructive-foreground: #1f0808;
+    --border: #2f484a;
+    --input: #355153;
+    --ring: #2ab9ab;
+    --panel: var(--card);
+    --panel-strong: #172628;
+    --accent-ink: var(--accent-foreground);
+    --shadow: rgba(0, 0, 0, 0.34);
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
@@ -127,6 +156,13 @@ code {
   display: grid;
   gap: 0.85rem;
   animation: revealIn 0.45s ease both;
+}
+
+.dark .marketingHero {
+  background:
+    radial-gradient(circle at 90% 0%, rgba(42, 185, 171, 0.18), transparent 46%),
+    linear-gradient(180deg, rgba(22, 34, 35, 0.98), rgba(16, 27, 28, 0.96));
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
 }
 
 .marketingHero h1 {
@@ -412,6 +448,35 @@ code {
   }
 }
 
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+:root[data-density="compact"] .productContent {
+  gap: 0.75rem;
+}
+
+:root[data-density="compact"] .stackLg,
+:root[data-density="compact"] .gridTwo {
+  gap: 0.75rem;
+}
+
+:root[data-density="compact"] .table th,
+:root[data-density="compact"] .table td {
+  padding: 0.36rem 0.5rem;
+}
+
+:root[data-density="compact"] .simpleList {
+  gap: 0.24rem;
+}
+
+:root[data-density="compact"] .toolbar {
+  gap: 0.45rem;
+}
+
 .panel {
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -627,7 +692,7 @@ code {
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: white;
+  background: var(--card);
 }
 
 .table {
@@ -658,6 +723,14 @@ code {
 
 .table tbody tr:hover td {
   background: color-mix(in srgb, var(--accent) 4%, white);
+}
+
+.dark .table th {
+  background: linear-gradient(180deg, rgba(25, 39, 41, 0.98), rgba(20, 33, 35, 0.97));
+}
+
+.dark .table tbody tr:hover td {
+  background: color-mix(in srgb, var(--accent) 16%, var(--card));
 }
 
 .emptyCell {
@@ -873,6 +946,13 @@ code {
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 252, 250, 0.92));
 }
 
+.dark .graphStudioCanvasWrap {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(42, 185, 171, 0.22), transparent 46%),
+    radial-gradient(circle at 82% 72%, rgba(198, 110, 63, 0.2), transparent 44%),
+    linear-gradient(180deg, rgba(19, 30, 32, 0.98), rgba(14, 24, 25, 0.96));
+}
+
 .graphStudioCanvasWrap::before {
   content: "";
   position: absolute;
@@ -884,6 +964,12 @@ code {
   pointer-events: none;
 }
 
+.dark .graphStudioCanvasWrap::before {
+  background-image:
+    linear-gradient(to right, rgba(120, 199, 191, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(120, 199, 191, 0.1) 1px, transparent 1px);
+}
+
 .graphStudioCanvasWrap::after {
   content: "";
   position: absolute;
@@ -891,6 +977,11 @@ code {
   background:
     radial-gradient(circle at center, transparent 62%, rgba(8, 36, 33, 0.08) 124%);
   pointer-events: none;
+}
+
+.dark .graphStudioCanvasWrap::after {
+  background:
+    radial-gradient(circle at center, transparent 58%, rgba(4, 12, 13, 0.46) 122%);
 }
 
 .graphCySurface {
@@ -915,6 +1006,12 @@ code {
   display: grid;
   gap: 0.5rem;
   z-index: 20;
+}
+
+.dark .graphInlineEditor {
+  border: 1px solid color-mix(in srgb, var(--border) 88%, #2ab9ab);
+  background: linear-gradient(180deg, rgba(24, 38, 39, 0.98), rgba(17, 30, 31, 0.96));
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.42);
 }
 
 .graphInlineEditor .field {
@@ -955,7 +1052,7 @@ code {
   padding: 0.55rem;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f4faf9;
+  background: color-mix(in srgb, var(--card) 94%, var(--muted));
   font-size: 0.77rem;
   line-height: 1.35;
   white-space: pre-wrap;
@@ -978,7 +1075,7 @@ code {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.82);
+  background: color-mix(in srgb, var(--card) 86%, transparent);
 }
 
 .messageCard p {
@@ -997,7 +1094,7 @@ code {
   display: inline-flex;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: #eff7f5;
+  background: color-mix(in srgb, var(--muted) 70%, var(--card));
   padding: 0.14rem 0.48rem;
   font-size: 0.78rem;
   text-transform: capitalize;
@@ -1043,14 +1140,14 @@ code {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.72rem 4.1rem 0.72rem 0.9rem;
-  background: #fff;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
   text-align: left;
   cursor: pointer;
 }
 
 .conversationItem.active {
   border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
-  background: color-mix(in srgb, var(--accent) 6%, white);
+  background: color-mix(in srgb, var(--accent) 10%, var(--card));
 }
 
 .conversationItem.pinned {
@@ -1094,9 +1191,9 @@ code {
   transform: translateY(-50%);
   display: flex;
   gap: 0.18rem;
-  border: 1px solid color-mix(in srgb, var(--border) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--border) 94%, var(--card));
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.95);
+  background: color-mix(in srgb, var(--card) 95%, transparent);
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease, transform 120ms ease;
@@ -1111,7 +1208,7 @@ code {
 .pinButton {
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   color: var(--muted-foreground);
   font-size: 0.75rem;
   padding: 0.2rem 0.38rem;
@@ -1153,7 +1250,7 @@ code {
 .chatTranscriptModern {
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.74);
+  background: color-mix(in srgb, var(--card) 78%, transparent);
   padding: 0.75rem;
   display: grid;
   gap: 0.75rem;
@@ -1171,7 +1268,7 @@ code {
   padding: 0.62rem 0.72rem;
   display: grid;
   gap: 0.35rem;
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
 }
 
 .chatBubbleModern p {
@@ -1220,7 +1317,7 @@ code {
   padding: 0.55rem 0.6rem;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.86);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
   overflow: auto;
 }
 
@@ -1233,8 +1330,8 @@ code {
   border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--accent) 7%, white),
-    rgba(255, 255, 255, 0.92)
+    color-mix(in srgb, var(--accent) 14%, var(--card)),
+    color-mix(in srgb, var(--card) 94%, transparent)
   );
 }
 
@@ -1243,8 +1340,8 @@ code {
   border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--accent) 10%, white),
-    rgba(255, 255, 255, 0.92)
+    color-mix(in srgb, var(--accent) 18%, var(--card)),
+    color-mix(in srgb, var(--card) 94%, transparent)
   );
 }
 
@@ -1282,7 +1379,7 @@ code {
 .chatComposerModern {
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
+  background: color-mix(in srgb, var(--card) 86%, transparent);
   padding: 0.75rem;
   display: grid;
   gap: 0.65rem;
@@ -1362,6 +1459,10 @@ code {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 252, 250, 0.96));
   box-shadow: none;
   overflow: auto;
+}
+
+.dark .graphCanvasPanel:fullscreen {
+  background: linear-gradient(180deg, rgba(17, 28, 29, 0.98), rgba(12, 22, 23, 0.96));
 }
 
 .graphCanvasPanel:fullscreen .graphStudioCanvasWrap {

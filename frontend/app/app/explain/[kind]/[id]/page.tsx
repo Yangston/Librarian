@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type FactExplainData,
   type RelationExplainData,
@@ -34,6 +35,7 @@ function ExplainHeader({ kind }: { kind: string }) {
 }
 
 export default function ExplainRecordPage() {
+  const isDevMode = useIsDevMode();
   const params = useParams<{ kind: string; id: string }>();
   const kind = params.kind;
   const recordId = useMemo(() => Number.parseInt(params.id, 10), [params.id]);
@@ -123,47 +125,55 @@ export default function ExplainRecordPage() {
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">Extractor run: {payload.extractor_run_id ?? "-"}</Badge>
                 <Badge variant="outline">
                   Confidence:{" "}
                   {"fact" in payload ? payload.fact.confidence.toFixed(2) : payload.relation.confidence.toFixed(2)}
                 </Badge>
-                <Badge variant="outline">Model: {payload.extraction_metadata?.model_name ?? "-"}</Badge>
-                <Badge variant="outline">Prompt: {payload.extraction_metadata?.prompt_version ?? "-"}</Badge>
-                <Badge variant="outline">
-                  Run at: {formatTimestamp(payload.extraction_metadata?.created_at)}
-                </Badge>
+                {isDevMode ? <Badge variant="outline">Extractor run: {payload.extractor_run_id ?? "-"}</Badge> : null}
+                {isDevMode ? (
+                  <Badge variant="outline">Model: {payload.extraction_metadata?.model_name ?? "-"}</Badge>
+                ) : null}
+                {isDevMode ? (
+                  <Badge variant="outline">Prompt: {payload.extraction_metadata?.prompt_version ?? "-"}</Badge>
+                ) : null}
+                {isDevMode ? (
+                  <Badge variant="outline">
+                    Run at: {formatTimestamp(payload.extraction_metadata?.created_at)}
+                  </Badge>
+                ) : null}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xl">Canonicalization</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p>Observed: {payload.schema_canonicalization.observed_label}</p>
-              <p>
-                Canonical: {payload.schema_canonicalization.canonical_label ?? "(none)"} (
-                {payload.schema_canonicalization.status})
-              </p>
-              {payload.schema_canonicalization.proposal ? (
+          {isDevMode ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xl">Canonicalization</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p>Observed: {payload.schema_canonicalization.observed_label}</p>
                 <p>
-                  Proposal #{payload.schema_canonicalization.proposal.proposal_id} (
-                  {payload.schema_canonicalization.proposal.status}) confidence{" "}
-                  {payload.schema_canonicalization.proposal.confidence.toFixed(2)}
+                  Canonical: {payload.schema_canonicalization.canonical_label ?? "(none)"} (
+                  {payload.schema_canonicalization.status})
                 </p>
-              ) : (
-                <p>Proposal: none</p>
-              )}
-            </CardContent>
-          </Card>
+                {payload.schema_canonicalization.proposal ? (
+                  <p>
+                    Proposal #{payload.schema_canonicalization.proposal.proposal_id} (
+                    {payload.schema_canonicalization.proposal.status}) confidence{" "}
+                    {payload.schema_canonicalization.proposal.confidence.toFixed(2)}
+                  </p>
+                ) : (
+                  <p>Proposal: none</p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Tabs defaultValue="snippets" className="space-y-3">
             <TabsList>
               <TabsTrigger value="snippets">Snippets</TabsTrigger>
               <TabsTrigger value="messages">Source Messages</TabsTrigger>
-              <TabsTrigger value="resolution">Resolution Events</TabsTrigger>
+              {isDevMode ? <TabsTrigger value="resolution">Resolution Events</TabsTrigger> : null}
             </TabsList>
 
             <TabsContent value="snippets">
@@ -195,23 +205,25 @@ export default function ExplainRecordPage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="resolution">
-              <Card>
-                <CardContent className="py-4">
-                  <ul className="simpleList">
-                    {payload.resolution_events.length === 0 ? (
-                      <li className="muted">No related resolution events.</li>
-                    ) : (
-                      payload.resolution_events.map((event) => (
-                        <li key={event.id}>
-                          {event.event_type} | entities [{event.entity_ids_json.join(", ")}] | {event.rationale}
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                </CardContent>
-              </Card>
-            </TabsContent>
+            {isDevMode ? (
+              <TabsContent value="resolution">
+                <Card>
+                  <CardContent className="py-4">
+                    <ul className="simpleList">
+                      {payload.resolution_events.length === 0 ? (
+                        <li className="muted">No related resolution events.</li>
+                      ) : (
+                        payload.resolution_events.map((event) => (
+                          <li key={event.id}>
+                            {event.event_type} | entities [{event.entity_ids_json.join(", ")}] | {event.rationale}
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            ) : null}
           </Tabs>
         </>
       ) : null}

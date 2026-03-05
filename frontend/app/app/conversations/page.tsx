@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { MessagesSquare } from "lucide-react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type ConversationsListResponse,
   type PodRead,
@@ -23,6 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 const PAGE_SIZE = 20;
 
 export default function ConversationsPage() {
+  const isDevMode = useIsDevMode();
   const [queryDraft, setQueryDraft] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
   const [offset, setOffset] = useState(0);
@@ -208,40 +210,40 @@ export default function ConversationsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>ID</TableHead>
+                    {isDevMode ? <TableHead>ID</TableHead> : null}
                     <TableHead>Pod</TableHead>
                     <TableHead>Last Updated</TableHead>
                     <TableHead>Messages</TableHead>
-                    <TableHead>Entities</TableHead>
-                    <TableHead>Facts</TableHead>
-                    <TableHead>Relations</TableHead>
-                    <TableHead>Runs</TableHead>
+                    {isDevMode ? <TableHead>Entities</TableHead> : null}
+                    {isDevMode ? <TableHead>Facts</TableHead> : null}
+                    {isDevMode ? <TableHead>Relations</TableHead> : null}
+                    {isDevMode ? <TableHead>Runs</TableHead> : null}
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(payload?.items ?? []).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-muted-foreground">
+                      <TableCell colSpan={isDevMode ? 10 : 6} className="text-muted-foreground">
                         No conversations found.
                       </TableCell>
                     </TableRow>
                   ) : (
                     payload?.items.map((item) => (
                       <TableRow key={item.conversation_id}>
-                        <TableCell>{conversationNames[item.conversation_id] ?? item.conversation_id}</TableCell>
                         <TableCell>
                           <Link href={`/app/conversations/${encodeURIComponent(item.conversation_id)}`}>
-                            {item.conversation_id}
+                            {conversationNames[item.conversation_id] ?? item.conversation_id}
                           </Link>
                         </TableCell>
+                        {isDevMode ? <TableCell>{item.conversation_id}</TableCell> : null}
                         <TableCell>{item.pod_name ?? (item.pod_id != null ? `Pod ${item.pod_id}` : "-")}</TableCell>
                         <TableCell>{formatTimestamp(item.last_message_at)}</TableCell>
                         <TableCell>{item.message_count}</TableCell>
-                        <TableCell>{item.entity_count}</TableCell>
-                        <TableCell>{item.fact_count}</TableCell>
-                        <TableCell>{item.relation_count}</TableCell>
-                        <TableCell>{item.extractor_run_count}</TableCell>
+                        {isDevMode ? <TableCell>{item.entity_count}</TableCell> : null}
+                        {isDevMode ? <TableCell>{item.fact_count}</TableCell> : null}
+                        {isDevMode ? <TableCell>{item.relation_count}</TableCell> : null}
+                        {isDevMode ? <TableCell>{item.extractor_run_count}</TableCell> : null}
                         <TableCell>
                           <DeleteActionButton
                             type="button"

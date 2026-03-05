@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   deleteEntityRecord,
   deleteFact,
@@ -27,6 +28,14 @@ import { Checkbox } from "../../../../components/ui/checkbox";
 import { DeleteActionButton, DeleteConfirmDialog } from "../../../../components/ui/delete-controls";
 import { Input } from "../../../../components/ui/input";
 import { Label } from "../../../../components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "../../../../components/ui/table";
 import { Textarea } from "../../../../components/ui/textarea";
 
 type CombinedTimelineEvent = {
@@ -74,6 +83,7 @@ function truncateLabel(value: string, max = 14): string {
 }
 
 export default function EntityDetailPage() {
+  const isDevMode = useIsDevMode();
   const router = useRouter();
   const params = useParams<{ entity_id: string }>();
   const entityId = useMemo(() => Number.parseInt(params.entity_id, 10), [params.entity_id]);
@@ -422,7 +432,12 @@ export default function EntityDetailPage() {
           rawLabel: fact.predicate
         };
       })
-      .filter((fact) => (showRawFieldVariants ? true : fact.rawLabel === fact.canonicalLabel))
+      .filter((fact) => {
+        if (isDevMode && showRawFieldVariants) {
+          return true;
+        }
+        return isDevMode ? fact.rawLabel === fact.canonicalLabel : true;
+      })
       .filter((fact) => {
         const query = fieldFilter.trim().toLowerCase();
         if (!query) {
@@ -434,7 +449,7 @@ export default function EntityDetailPage() {
         );
       })
       .sort((left, right) => new Date(right.created_at).valueOf() - new Date(left.created_at).valueOf());
-  }, [fieldCanonicalByLabel, fieldFilter, graph?.supporting_facts, showRawFieldVariants]);
+  }, [fieldCanonicalByLabel, fieldFilter, graph?.supporting_facts, isDevMode, showRawFieldVariants]);
 
   const combinedTimeline = useMemo(() => {
     if (!graph) {
@@ -576,6 +591,8 @@ export default function EntityDetailPage() {
       null
     );
   }, [graph, pendingDeleteRelationId]);
+  const factColSpan = isDevMode ? 7 : 3;
+  const relationColSpan = isDevMode ? 6 : 3;
 
   return (
     <div className="stackLg routeFade">
@@ -634,14 +651,18 @@ export default function EntityDetailPage() {
                 </div>
               )}
             </div>
-            <p className="subtle">
-              Type: {entity.type_label || "untyped"} | First seen: {formatTimestamp(entity.first_seen_timestamp)} |
-              Last seen: {formatTimestamp(entity.updated_at)} | Conversations:{" "}
-              {conversationCount ?? "-"}
-            </p>
-            <p className="subtle">
-              Aliases: {entity.known_aliases_json.length > 0 ? entity.known_aliases_json.join(", ") : "(none)"}
-            </p>
+            <p className="subtle">Type: {entity.type_label || "untyped"}</p>
+            {isDevMode ? (
+              <>
+                <p className="subtle">
+                  First seen: {formatTimestamp(entity.first_seen_timestamp)} | Last seen:{" "}
+                  {formatTimestamp(entity.updated_at)} | Conversations: {conversationCount ?? "-"}
+                </p>
+                <p className="subtle">
+                  Aliases: {entity.known_aliases_json.length > 0 ? entity.known_aliases_json.join(", ") : "(none)"}
+                </p>
+              </>
+            ) : null}
           </Card>
 
           <Card className="border-border/80 bg-card/95 p-4">
@@ -654,73 +675,75 @@ export default function EntityDetailPage() {
                   value={fieldFilter}
                   onChange={(event) => setFieldFilter(event.target.value)}
                 />
-                <label className="inline-flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                  <Checkbox
-                    checked={showRawFieldVariants}
-                    onCheckedChange={(checked) => setShowRawFieldVariants(Boolean(checked))}
-                  />
-                  <Label>Show raw label variants</Label>
-                </label>
+                {isDevMode ? (
+                  <label className="inline-flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
+                    <Checkbox
+                      checked={showRawFieldVariants}
+                      onCheckedChange={(checked) => setShowRawFieldVariants(Boolean(checked))}
+                    />
+                    <Label>Show raw label variants</Label>
+                  </label>
+                ) : null}
               </div>
             </div>
-            <div className="tableWrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Field</th>
-                    <th>Value</th>
-                    <th>Confidence</th>
-                    <th>Scope</th>
-                    <th>Timestamp</th>
-                    <th>Explain</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {factRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="emptyCell">
-                        No facts match the current filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    factRows.map((fact) => {
-                      const rowKey = `fact-${fact.id}`;
-                      const isEditing = editingFactId === fact.id;
-                      return (
-                        <tr key={fact.id}>
-                          <td>
-                            {isEditing ? (
-                              <Input
-                                className="h-8 max-w-[260px]"
-                                value={factDraft.predicate}
-                                onChange={(event) =>
-                                  setFactDraft((current) => ({ ...current, predicate: event.target.value }))
-                                }
-                              />
-                            ) : (
-                              <>
-                                {fact.canonicalLabel}
-                                {fact.canonicalLabel !== fact.rawLabel ? (
-                                  <span className="muted"> (raw: {fact.rawLabel})</span>
-                                ) : null}
-                              </>
-                            )}
-                          </td>
-                          <td>
-                            {isEditing ? (
-                              <Input
-                                className="h-8"
-                                value={factDraft.object_value}
-                                onChange={(event) =>
-                                  setFactDraft((current) => ({ ...current, object_value: event.target.value }))
-                                }
-                              />
-                            ) : (
-                              fact.object_value
-                            )}
-                          </td>
-                          <td>
+            <Table className="min-w-[860px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Field</TableHead>
+                  <TableHead>Value</TableHead>
+                  {isDevMode ? <TableHead>Confidence</TableHead> : null}
+                  {isDevMode ? <TableHead>Scope</TableHead> : null}
+                  {isDevMode ? <TableHead>Timestamp</TableHead> : null}
+                  {isDevMode ? <TableHead>Explain</TableHead> : null}
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {factRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={factColSpan} className="text-center text-muted-foreground">
+                      No facts match the current filters.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  factRows.map((fact) => {
+                    const rowKey = `fact-${fact.id}`;
+                    const isEditing = editingFactId === fact.id;
+                    return (
+                      <TableRow key={fact.id}>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input
+                              className="h-8 max-w-[260px]"
+                              value={factDraft.predicate}
+                              onChange={(event) =>
+                                setFactDraft((current) => ({ ...current, predicate: event.target.value }))
+                              }
+                            />
+                          ) : (
+                            <>
+                              {fact.canonicalLabel}
+                              {isDevMode && fact.canonicalLabel !== fact.rawLabel ? (
+                                <span className="muted"> (raw: {fact.rawLabel})</span>
+                              ) : null}
+                            </>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input
+                              className="h-8"
+                              value={factDraft.object_value}
+                              onChange={(event) =>
+                                setFactDraft((current) => ({ ...current, object_value: event.target.value }))
+                              }
+                            />
+                          ) : (
+                            fact.object_value
+                          )}
+                        </TableCell>
+                        {isDevMode ? (
+                          <TableCell>
                             {isEditing ? (
                               <Input
                                 className="h-8 max-w-[180px]"
@@ -732,23 +755,169 @@ export default function EntityDetailPage() {
                             ) : (
                               fact.confidence.toFixed(2)
                             )}
-                          </td>
-                          <td>{fact.scope}</td>
-                          <td>{formatTimestamp(fact.created_at)}</td>
-                          <td>
+                          </TableCell>
+                        ) : null}
+                        {isDevMode ? <TableCell>{fact.scope}</TableCell> : null}
+                        {isDevMode ? <TableCell>{formatTimestamp(fact.created_at)}</TableCell> : null}
+                        {isDevMode ? (
+                          <TableCell>
                             <Link href={`/app/explain/facts/${fact.id}`}>Explain</Link>
-                          </td>
-                          <td>
+                          </TableCell>
+                        ) : null}
+                        <TableCell>
+                          {isEditing ? (
+                            <div className="inlineActions">
+                              <Button
+                                type="button"
+                                onClick={() =>
+                                  void saveEditedFact(
+                                    fact.id,
+                                    fact.rawLabel,
+                                    fact.object_value,
+                                    fact.confidence
+                                  )
+                                }
+                                disabled={busyKey === rowKey}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                variant="outline"
+                                type="button"
+                                onClick={cancelEditFact}
+                                disabled={busyKey === rowKey}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="inlineActions">
+                              <Button
+                                variant="outline"
+                                type="button"
+                                onClick={() =>
+                                  beginEditFact(fact.id, fact.rawLabel, fact.object_value, fact.confidence)
+                                }
+                                disabled={busyKey === rowKey}
+                              >
+                                Edit
+                              </Button>
+                              <DeleteActionButton
+                                type="button"
+                                onClick={() => requestDeleteFact(fact.id)}
+                                disabled={busyKey === rowKey}
+                              />
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+
+          <section className="gridTwo">
+            <Card className="border-border/80 bg-card/95 p-4">
+              <h3>Outgoing Relations</h3>
+              <Table className="min-w-[760px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Relation</TableHead>
+                    <TableHead>To</TableHead>
+                    {isDevMode ? <TableHead>Qualifiers</TableHead> : null}
+                    {isDevMode ? <TableHead>Confidence</TableHead> : null}
+                    {isDevMode ? <TableHead>Explain</TableHead> : null}
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {graph.outgoing_relations.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={relationColSpan} className="text-center text-muted-foreground">
+                        No outgoing relations.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    graph.outgoing_relations.map((relation) => {
+                      const rowKey = `relation-${relation.id}`;
+                      const isEditing = editingRelationId === relation.id;
+                      return (
+                        <TableRow key={relation.id}>
+                          <TableCell>
+                            {isEditing ? (
+                              <Input
+                                className="h-8 max-w-[260px]"
+                                value={relationDraft.relation_type}
+                                onChange={(event) =>
+                                  setRelationDraft((current) => ({
+                                    ...current,
+                                    relation_type: event.target.value
+                                  }))
+                                }
+                              />
+                            ) : (
+                              relation.relation_type
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Link href={`/app/entities/${relation.to_entity_id}`}>{relation.to_entity_name}</Link>
+                          </TableCell>
+                          {isDevMode ? (
+                            <TableCell>
+                              {isEditing ? (
+                                <Input
+                                  className="h-8"
+                                  value={relationDraft.qualifiers_json}
+                                  onChange={(event) =>
+                                    setRelationDraft((current) => ({
+                                      ...current,
+                                      qualifiers_json: event.target.value
+                                    }))
+                                  }
+                                />
+                              ) : Object.keys(relation.qualifiers_json).length > 0 ? (
+                                JSON.stringify(relation.qualifiers_json)
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                          ) : null}
+                          {isDevMode ? (
+                            <TableCell>
+                              {isEditing ? (
+                                <Input
+                                  className="h-8 max-w-[180px]"
+                                  value={relationDraft.confidence}
+                                  onChange={(event) =>
+                                    setRelationDraft((current) => ({
+                                      ...current,
+                                      confidence: event.target.value
+                                    }))
+                                  }
+                                />
+                              ) : (
+                                relation.confidence.toFixed(2)
+                              )}
+                            </TableCell>
+                          ) : null}
+                          {isDevMode ? (
+                            <TableCell>
+                              <Link href={`/app/explain/relations/${relation.id}`}>Explain</Link>
+                            </TableCell>
+                          ) : null}
+                          <TableCell>
                             {isEditing ? (
                               <div className="inlineActions">
                                 <Button
                                   type="button"
                                   onClick={() =>
-                                    void saveEditedFact(
-                                      fact.id,
-                                      fact.rawLabel,
-                                      fact.object_value,
-                                      fact.confidence
+                                    void saveEditedRelation(
+                                      relation.id,
+                                      relation.relation_type,
+                                      relation.confidence,
+                                      relation.qualifiers_json
                                     )
                                   }
                                   disabled={busyKey === rowKey}
@@ -758,7 +927,7 @@ export default function EntityDetailPage() {
                                 <Button
                                   variant="outline"
                                   type="button"
-                                  onClick={cancelEditFact}
+                                  onClick={cancelEditRelation}
                                   disabled={busyKey === rowKey}
                                 >
                                   Cancel
@@ -770,7 +939,12 @@ export default function EntityDetailPage() {
                                   variant="outline"
                                   type="button"
                                   onClick={() =>
-                                    beginEditFact(fact.id, fact.rawLabel, fact.object_value, fact.confidence)
+                                    beginEditRelation(
+                                      relation.id,
+                                      relation.relation_type,
+                                      relation.confidence,
+                                      relation.qualifiers_json
+                                    )
                                   }
                                   disabled={busyKey === rowKey}
                                 >
@@ -778,212 +952,67 @@ export default function EntityDetailPage() {
                                 </Button>
                                 <DeleteActionButton
                                   type="button"
-                                  onClick={() => requestDeleteFact(fact.id)}
+                                  onClick={() => requestDeleteRelation(relation.id)}
                                   disabled={busyKey === rowKey}
                                 />
                               </div>
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       );
                     })
                   )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-
-          <section className="gridTwo">
-            <Card className="border-border/80 bg-card/95 p-4">
-              <h3>Outgoing Relations</h3>
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Relation</th>
-                      <th>To</th>
-                      <th>Qualifiers</th>
-                      <th>Confidence</th>
-                      <th>Explain</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {graph.outgoing_relations.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="emptyCell">
-                          No outgoing relations.
-                        </td>
-                      </tr>
-                    ) : (
-                      graph.outgoing_relations.map((relation) => {
-                        const rowKey = `relation-${relation.id}`;
-                        const isEditing = editingRelationId === relation.id;
-                        return (
-                          <tr key={relation.id}>
-                            <td>
-                              {isEditing ? (
-                                <Input
-                                  className="h-8 max-w-[260px]"
-                                  value={relationDraft.relation_type}
-                                  onChange={(event) =>
-                                    setRelationDraft((current) => ({
-                                      ...current,
-                                      relation_type: event.target.value
-                                    }))
-                                  }
-                                />
-                              ) : (
-                                relation.relation_type
-                              )}
-                            </td>
-                            <td>
-                              <Link href={`/app/entities/${relation.to_entity_id}`}>{relation.to_entity_name}</Link>
-                            </td>
-                            <td>
-                              {isEditing ? (
-                                <Input
-                                  className="h-8"
-                                  value={relationDraft.qualifiers_json}
-                                  onChange={(event) =>
-                                    setRelationDraft((current) => ({
-                                      ...current,
-                                      qualifiers_json: event.target.value
-                                    }))
-                                  }
-                                />
-                              ) : Object.keys(relation.qualifiers_json).length > 0 ? (
-                                JSON.stringify(relation.qualifiers_json)
-                              ) : (
-                                "-"
-                              )}
-                            </td>
-                            <td>
-                              {isEditing ? (
-                                <Input
-                                  className="h-8 max-w-[180px]"
-                                  value={relationDraft.confidence}
-                                  onChange={(event) =>
-                                    setRelationDraft((current) => ({
-                                      ...current,
-                                      confidence: event.target.value
-                                    }))
-                                  }
-                                />
-                              ) : (
-                                relation.confidence.toFixed(2)
-                              )}
-                            </td>
-                            <td>
-                              <Link href={`/app/explain/relations/${relation.id}`}>Explain</Link>
-                            </td>
-                            <td>
-                              {isEditing ? (
-                                <div className="inlineActions">
-                                  <Button
-                                    type="button"
-                                    onClick={() =>
-                                      void saveEditedRelation(
-                                        relation.id,
-                                        relation.relation_type,
-                                        relation.confidence,
-                                        relation.qualifiers_json
-                                      )
-                                    }
-                                    disabled={busyKey === rowKey}
-                                  >
-                                    Save
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    type="button"
-                                    onClick={cancelEditRelation}
-                                    disabled={busyKey === rowKey}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="inlineActions">
-                                  <Button
-                                    variant="outline"
-                                    type="button"
-                                    onClick={() =>
-                                      beginEditRelation(
-                                        relation.id,
-                                        relation.relation_type,
-                                        relation.confidence,
-                                        relation.qualifiers_json
-                                      )
-                                    }
-                                    disabled={busyKey === rowKey}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <DeleteActionButton
-                                    type="button"
-                                    onClick={() => requestDeleteRelation(relation.id)}
-                                    disabled={busyKey === rowKey}
-                                  />
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                </TableBody>
+              </Table>
             </Card>
 
             <Card className="border-border/80 bg-card/95 p-4">
               <h3>Incoming Relations</h3>
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Relation</th>
-                      <th>From</th>
-                      <th>Qualifiers</th>
-                      <th>Confidence</th>
-                      <th>Explain</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {graph.incoming_relations.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="emptyCell">
-                          No incoming relations.
-                        </td>
-                      </tr>
-                    ) : (
-                      graph.incoming_relations.map((relation) => {
-                        const rowKey = `relation-${relation.id}`;
-                        const isEditing = editingRelationId === relation.id;
-                        return (
-                          <tr key={relation.id}>
-                            <td>
-                              {isEditing ? (
-                                <Input
-                                  className="h-8 max-w-[260px]"
-                                  value={relationDraft.relation_type}
-                                  onChange={(event) =>
-                                    setRelationDraft((current) => ({
-                                      ...current,
-                                      relation_type: event.target.value
-                                    }))
-                                  }
-                                />
-                              ) : (
-                                relation.relation_type
-                              )}
-                            </td>
-                            <td>
-                              <Link href={`/app/entities/${relation.from_entity_id}`}>{relation.from_entity_name}</Link>
-                            </td>
-                            <td>
+              <Table className="min-w-[760px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Relation</TableHead>
+                    <TableHead>From</TableHead>
+                    {isDevMode ? <TableHead>Qualifiers</TableHead> : null}
+                    {isDevMode ? <TableHead>Confidence</TableHead> : null}
+                    {isDevMode ? <TableHead>Explain</TableHead> : null}
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {graph.incoming_relations.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={relationColSpan} className="text-center text-muted-foreground">
+                        No incoming relations.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    graph.incoming_relations.map((relation) => {
+                      const rowKey = `relation-${relation.id}`;
+                      const isEditing = editingRelationId === relation.id;
+                      return (
+                        <TableRow key={relation.id}>
+                          <TableCell>
+                            {isEditing ? (
+                              <Input
+                                className="h-8 max-w-[260px]"
+                                value={relationDraft.relation_type}
+                                onChange={(event) =>
+                                  setRelationDraft((current) => ({
+                                    ...current,
+                                    relation_type: event.target.value
+                                  }))
+                                }
+                              />
+                            ) : (
+                              relation.relation_type
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Link href={`/app/entities/${relation.from_entity_id}`}>{relation.from_entity_name}</Link>
+                          </TableCell>
+                          {isDevMode ? (
+                            <TableCell>
                               {isEditing ? (
                                 <Input
                                   className="h-8"
@@ -1000,8 +1029,10 @@ export default function EntityDetailPage() {
                               ) : (
                                 "-"
                               )}
-                            </td>
-                            <td>
+                            </TableCell>
+                          ) : null}
+                          {isDevMode ? (
+                            <TableCell>
                               {isEditing ? (
                                 <Input
                                   className="h-8 max-w-[180px]"
@@ -1016,87 +1047,91 @@ export default function EntityDetailPage() {
                               ) : (
                                 relation.confidence.toFixed(2)
                               )}
-                            </td>
-                            <td>
+                            </TableCell>
+                          ) : null}
+                          {isDevMode ? (
+                            <TableCell>
                               <Link href={`/app/explain/relations/${relation.id}`}>Explain</Link>
-                            </td>
-                            <td>
-                              {isEditing ? (
-                                <div className="inlineActions">
-                                  <Button
-                                    type="button"
-                                    onClick={() =>
-                                      void saveEditedRelation(
-                                        relation.id,
-                                        relation.relation_type,
-                                        relation.confidence,
-                                        relation.qualifiers_json
-                                      )
-                                    }
-                                    disabled={busyKey === rowKey}
-                                  >
-                                    Save
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    type="button"
-                                    onClick={cancelEditRelation}
-                                    disabled={busyKey === rowKey}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="inlineActions">
-                                  <Button
-                                    variant="outline"
-                                    type="button"
-                                    onClick={() =>
-                                      beginEditRelation(
-                                        relation.id,
-                                        relation.relation_type,
-                                        relation.confidence,
-                                        relation.qualifiers_json
-                                      )
-                                    }
-                                    disabled={busyKey === rowKey}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <DeleteActionButton
-                                    type="button"
-                                    onClick={() => requestDeleteRelation(relation.id)}
-                                    disabled={busyKey === rowKey}
-                                  />
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                            </TableCell>
+                          ) : null}
+                          <TableCell>
+                            {isEditing ? (
+                              <div className="inlineActions">
+                                <Button
+                                  type="button"
+                                  onClick={() =>
+                                    void saveEditedRelation(
+                                      relation.id,
+                                      relation.relation_type,
+                                      relation.confidence,
+                                      relation.qualifiers_json
+                                    )
+                                  }
+                                  disabled={busyKey === rowKey}
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  type="button"
+                                  onClick={cancelEditRelation}
+                                  disabled={busyKey === rowKey}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="inlineActions">
+                                <Button
+                                  variant="outline"
+                                  type="button"
+                                  onClick={() =>
+                                    beginEditRelation(
+                                      relation.id,
+                                      relation.relation_type,
+                                      relation.confidence,
+                                      relation.qualifiers_json
+                                    )
+                                  }
+                                  disabled={busyKey === rowKey}
+                                >
+                                  Edit
+                                </Button>
+                                <DeleteActionButton
+                                  type="button"
+                                  onClick={() => requestDeleteRelation(relation.id)}
+                                  disabled={busyKey === rowKey}
+                                />
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
             </Card>
           </section>
 
           <section className="gridTwo">
-            <Card className="border-border/80 bg-card/95 p-4">
-              <h3>Timeline</h3>
-              <ul className="simpleList">
-                {combinedTimeline.length === 0 ? (
-                  <li className="muted">No timeline activity.</li>
-                ) : (
-                  combinedTimeline.map((event) => (
-                    <li key={event.id}>
-                      {formatTimestamp(event.timestamp)} | {event.kind.replace("_", " ")} | {event.title} |{" "}
-                      <Link href={event.explainPath}>Explain</Link>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </Card>
+            {isDevMode ? (
+              <Card className="border-border/80 bg-card/95 p-4">
+                <h3>Timeline</h3>
+                <ul className="simpleList">
+                  {combinedTimeline.length === 0 ? (
+                    <li className="muted">No timeline activity.</li>
+                  ) : (
+                    combinedTimeline.map((event) => (
+                      <li key={event.id}>
+                        {formatTimestamp(event.timestamp)} | {event.kind.replace("_", " ")} | {event.title} |{" "}
+                        <Link href={event.explainPath}>Explain</Link>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </Card>
+            ) : null}
             <Card className="border-border/80 bg-card/95 p-4">
               <h3>Graph Neighborhood</h3>
               <div className="graphCanvasWrap">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Filter, Search as SearchIcon } from "lucide-react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type CollectionTreeNode,
   getPodTree,
@@ -45,6 +46,7 @@ function parseOptionalInt(value: string | undefined): number | undefined {
 
 export default function SearchPage() {
   const router = useRouter();
+  const isDevMode = useIsDevMode();
   const [queryDraft, setQueryDraft] = useState("");
   const [conversationScope, setConversationScope] = useState("");
   const [typeLabel, setTypeLabel] = useState("");
@@ -381,8 +383,8 @@ export default function SearchPage() {
                               <Link href={`/app/entities/${hit.entity.id}`}>{hit.entity.canonical_name}</Link>
                             </TableCell>
                             <TableCell>
-                              aliases: {(hit.entity.known_aliases_json ?? []).slice(0, 3).join(", ") || "(none)"} |
-                              {" "}updated {formatTimestamp(hit.entity.updated_at)}
+                              aliases: {(hit.entity.known_aliases_json ?? []).slice(0, 3).join(", ") || "(none)"}
+                              {isDevMode ? ` | updated ${formatTimestamp(hit.entity.updated_at)}` : ""}
                             </TableCell>
                             <TableCell>{hit.entity.type_label || "-"}</TableCell>
                           </TableRow>
@@ -406,13 +408,13 @@ export default function SearchPage() {
                         <TableHead>Score</TableHead>
                         <TableHead>Fact</TableHead>
                         <TableHead>Preview</TableHead>
-                        <TableHead>Explain</TableHead>
+                        {isDevMode ? <TableHead>Explain</TableHead> : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {result.facts.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={4} className="text-muted-foreground">
+                          <TableCell colSpan={isDevMode ? 4 : 3} className="text-muted-foreground">
                             No fact hits.
                           </TableCell>
                         </TableRow>
@@ -424,11 +426,15 @@ export default function SearchPage() {
                               {hit.fact.subject_entity_name} {hit.fact.predicate} {hit.fact.object_value}
                             </TableCell>
                             <TableCell>
-                              scope: {hit.fact.scope} | created: {formatTimestamp(hit.fact.created_at)}
+                              {isDevMode
+                                ? `scope: ${hit.fact.scope} | created: ${formatTimestamp(hit.fact.created_at)}`
+                                : "Matched extracted fact"}
                             </TableCell>
-                            <TableCell>
-                              <Link href={`/app/explain/facts/${hit.fact.id}`}>Explain</Link>
-                            </TableCell>
+                            {isDevMode ? (
+                              <TableCell>
+                                <Link href={`/app/explain/facts/${hit.fact.id}`}>Explain</Link>
+                              </TableCell>
+                            ) : null}
                           </TableRow>
                         ))
                       )}

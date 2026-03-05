@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type CollectionTreeNode,
   type EntityListingResponse,
@@ -36,6 +37,7 @@ type SortOrder = "asc" | "desc";
 type CollectionOption = { id: number; name: string };
 
 export default function EntitiesPage() {
+  const isDevMode = useIsDevMode();
   const [queryDraft, setQueryDraft] = useState("");
   const [typeDraft, setTypeDraft] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
@@ -115,6 +117,12 @@ export default function EntitiesPage() {
       active = false;
     };
   }, [podDraft]);
+
+  useEffect(() => {
+    if (!isDevMode && (sort === "alias_count" || sort === "conversation_count")) {
+      setSort("canonical_name");
+    }
+  }, [isDevMode, sort]);
 
   useEffect(() => {
     let active = true;
@@ -256,9 +264,13 @@ export default function EntitiesPage() {
   const canNext = offset + PAGE_SIZE < total;
   const fieldChoices = payload?.available_fields ?? [];
   const visibleFields = useMemo(
-    () => selectedFields.filter((field) => fieldChoices.includes(field) || selectedFields.includes(field)),
-    [fieldChoices, selectedFields]
+    () =>
+      isDevMode
+        ? selectedFields.filter((field) => fieldChoices.includes(field) || selectedFields.includes(field))
+        : [],
+    [fieldChoices, isDevMode, selectedFields]
   );
+  const baseColumnCount = isDevMode ? 6 : 3;
   const pendingDeleteEntity =
     pendingDeleteEntityId === null
       ? null
@@ -301,19 +313,19 @@ export default function EntitiesPage() {
             </label>
             <label className="field">
               <Label>Sort</Label>
-              <Select value={sort} onValueChange={(value) => setSort(value as SortKey)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="last_seen">Last seen</SelectItem>
-                  <SelectItem value="canonical_name">Canonical name</SelectItem>
-                  <SelectItem value="type_label">Type label</SelectItem>
-                  <SelectItem value="conversation_count">Conversation count</SelectItem>
-                  <SelectItem value="alias_count">Alias count</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
+                <Select value={sort} onValueChange={(value) => setSort(value as SortKey)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="last_seen">Last seen</SelectItem>
+                    <SelectItem value="canonical_name">Canonical name</SelectItem>
+                    <SelectItem value="type_label">Type label</SelectItem>
+                    {isDevMode ? <SelectItem value="conversation_count">Conversation count</SelectItem> : null}
+                    {isDevMode ? <SelectItem value="alias_count">Alias count</SelectItem> : null}
+                  </SelectContent>
+                </Select>
+              </label>
             <label className="field">
               <Label>Order</Label>
               <Select value={order} onValueChange={(value) => setOrder(value as SortOrder)}>
@@ -369,30 +381,32 @@ export default function EntitiesPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Dynamic Columns</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {fieldChoices.slice(0, 16).map((field) => (
-              <label
-                className="inline-flex items-center gap-2 rounded-md border border-border/70 px-2.5 py-1.5 text-xs"
-                key={field}
-                htmlFor={`field-${field}`}
-              >
-                <Checkbox
-                  id={`field-${field}`}
-                  checked={selectedFields.includes(field)}
-                  onCheckedChange={() => toggleField(field)}
-                />
-                <span>{field}</span>
-              </label>
-            ))}
-            {fieldChoices.length === 0 ? <span className="muted">No dynamic fields available yet.</span> : null}
-          </div>
-        </CardContent>
-      </Card>
+      {isDevMode ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Dynamic Columns</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {fieldChoices.slice(0, 16).map((field) => (
+                <label
+                  className="inline-flex items-center gap-2 rounded-md border border-border/70 px-2.5 py-1.5 text-xs"
+                  key={field}
+                  htmlFor={`field-${field}`}
+                >
+                  <Checkbox
+                    id={`field-${field}`}
+                    checked={selectedFields.includes(field)}
+                    onCheckedChange={() => toggleField(field)}
+                  />
+                  <span>{field}</span>
+                </label>
+              ))}
+              {fieldChoices.length === 0 ? <span className="muted">No dynamic fields available yet.</span> : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader className="pb-3">
@@ -400,7 +414,7 @@ export default function EntitiesPage() {
             <CardTitle className="text-lg">Entity Records</CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">Total: {total}</Badge>
-              <Badge variant="outline">Columns: {visibleFields.length + 6}</Badge>
+              <Badge variant="outline">Columns: {visibleFields.length + baseColumnCount}</Badge>
               {refreshing ? <Badge variant="outline">Refreshing...</Badge> : null}
             </div>
           </div>
@@ -415,9 +429,9 @@ export default function EntitiesPage() {
                 <TableRow>
                   <TableHead>Canonical Name</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Aliases</TableHead>
-                  <TableHead>Last Seen</TableHead>
-                  <TableHead>Conversations</TableHead>
+                  {isDevMode ? <TableHead>Aliases</TableHead> : null}
+                  {isDevMode ? <TableHead>Last Seen</TableHead> : null}
+                  {isDevMode ? <TableHead>Conversations</TableHead> : null}
                   <TableHead>Actions</TableHead>
                   {visibleFields.map((field) => (
                     <TableHead key={field}>{field}</TableHead>
@@ -427,7 +441,10 @@ export default function EntitiesPage() {
               <TableBody>
                   {(payload?.items ?? []).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6 + visibleFields.length} className="text-center text-muted-foreground">
+                      <TableCell
+                        colSpan={baseColumnCount + visibleFields.length}
+                        className="text-center text-muted-foreground"
+                      >
                         No entities found.
                       </TableCell>
                     </TableRow>
@@ -460,9 +477,9 @@ export default function EntitiesPage() {
                             entity.type_label || "-"
                           )}
                         </TableCell>
-                        <TableCell>{entity.alias_count}</TableCell>
-                        <TableCell>{formatTimestamp(entity.last_seen)}</TableCell>
-                        <TableCell>{entity.conversation_count}</TableCell>
+                        {isDevMode ? <TableCell>{entity.alias_count}</TableCell> : null}
+                        {isDevMode ? <TableCell>{formatTimestamp(entity.last_seen)}</TableCell> : null}
+                        {isDevMode ? <TableCell>{entity.conversation_count}</TableCell> : null}
                         <TableCell>
                           {editingEntityId === entity.id ? (
                             <div className="flex items-center gap-2">

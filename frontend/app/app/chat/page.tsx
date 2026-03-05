@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type ConversationListItem,
   type MessageRead,
@@ -92,6 +93,7 @@ type DeleteIntent =
   | null;
 
 function ChatPageInner() {
+  const isDevMode = useIsDevMode();
   const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState("");
   const [conversationSearch, setConversationSearch] = useState("");
@@ -528,9 +530,16 @@ function ChatPageInner() {
     Boolean(draft.trim()) &&
     !thinking &&
     (isExistingConversation || selectedDraftPod !== null);
+  const showContextPanel = isDevMode && contextPanelVisible;
+
+  useEffect(() => {
+    if (!isDevMode && contextPanelVisible) {
+      setContextPanelVisible(false);
+    }
+  }, [contextPanelVisible, isDevMode]);
 
   return (
-    <div className={`chatWorkspace routeFade ${contextPanelVisible ? "" : "contextHidden"}`}>
+    <div className={`chatWorkspace routeFade ${showContextPanel ? "" : "contextHidden"}`}>
       <Card className="chatRail border-border/80 bg-card/95 overflow-hidden">
         <CardHeader className="pb-2">
           <div className="sectionTitleRow">
@@ -671,9 +680,11 @@ function ChatPageInner() {
                       : "Select a pod to start a new conversation."}
               </p>
             </div>
-            <Button variant="outline" type="button" onClick={toggleContextPanel}>
-              {contextPanelVisible ? "Hide Context" : "Show Context"}
-            </Button>
+            {isDevMode ? (
+              <Button variant="outline" type="button" onClick={toggleContextPanel}>
+                {contextPanelVisible ? "Hide Context" : "Show Context"}
+              </Button>
+            ) : null}
           </div>
           {error ? <p className="errorText">{error}</p> : null}
         </CardHeader>
@@ -804,7 +815,7 @@ function ChatPageInner() {
         </CardContent>
       </Card>
 
-      {contextPanelVisible ? (
+      {showContextPanel ? (
         <Card className="chatMetaPanel border-border/80 bg-card/95 overflow-hidden">
           <CardHeader className="pb-2">
             <div className="sectionTitleRow">

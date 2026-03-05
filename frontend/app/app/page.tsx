@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowRight, ChartNetwork, FolderKanban, MessageSquare, Search, Shapes, Users } from "lucide-react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type ConversationsListResponse,
   type RecentEntitiesResponse,
@@ -57,6 +58,7 @@ const ACTIONS = [
 
 export default function WorkspacePage() {
   const router = useRouter();
+  const isDevMode = useIsDevMode();
   const [searchDraft, setSearchDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -204,27 +206,31 @@ export default function WorkspacePage() {
                 <CardTitle className="text-3xl">{recentEntities?.items.length ?? 0}</CardTitle>
               </CardHeader>
             </Card>
-            <Card>
-              <CardHeader className="pb-1">
-                <CardDescription>Schema Fields</CardDescription>
-                <CardTitle className="text-3xl">{schemaOverview?.fields.length ?? 0}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-1">
-                <CardDescription>Open Proposals</CardDescription>
-                <CardTitle className="text-3xl">
-                  {schemaOverview?.proposals.filter((proposal) => proposal.status === "proposed").length ?? 0}
-                </CardTitle>
-              </CardHeader>
-            </Card>
+            {isDevMode ? (
+              <>
+                <Card>
+                  <CardHeader className="pb-1">
+                    <CardDescription>Schema Fields</CardDescription>
+                    <CardTitle className="text-3xl">{schemaOverview?.fields.length ?? 0}</CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-1">
+                    <CardDescription>Open Proposals</CardDescription>
+                    <CardTitle className="text-3xl">
+                      {schemaOverview?.proposals.filter((proposal) => proposal.status === "proposed").length ?? 0}
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
+              </>
+            ) : null}
           </div>
 
           <Tabs defaultValue="conversations" className="space-y-3">
             <TabsList>
               <TabsTrigger value="conversations">Conversations</TabsTrigger>
               <TabsTrigger value="entities">Entities</TabsTrigger>
-              <TabsTrigger value="schema">Schema</TabsTrigger>
+              {isDevMode ? <TabsTrigger value="schema">Schema</TabsTrigger> : null}
             </TabsList>
 
             <TabsContent value="conversations">
@@ -305,49 +311,51 @@ export default function WorkspacePage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="schema">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl">Recent Schema Changes</CardTitle>
-                    <CardDescription>Proposal stream with confidence and timestamps.</CardDescription>
-                  </div>
-                  <Button asChild variant="outline" size="sm">
-                    <Link href="/app/schema">Open schema explorer</Link>
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Confidence</TableHead>
-                        <TableHead>Created</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(schemaOverview?.proposals ?? []).length === 0 ? (
+            {isDevMode ? (
+              <TabsContent value="schema">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-xl">Recent Schema Changes</CardTitle>
+                      <CardDescription>Proposal stream with confidence and timestamps.</CardDescription>
+                    </div>
+                    <Button asChild variant="outline" size="sm">
+                      <Link href="/app/schema">Open schema explorer</Link>
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={4} className="text-muted-foreground">
-                            No schema proposals yet.
-                          </TableCell>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Confidence</TableHead>
+                          <TableHead>Created</TableHead>
                         </TableRow>
-                      ) : (
-                        schemaOverview?.proposals.slice(0, 12).map((proposal) => (
-                          <TableRow key={proposal.id}>
-                            <TableCell>{proposal.proposal_type}</TableCell>
-                            <TableCell>{proposal.status}</TableCell>
-                            <TableCell>{proposal.confidence.toFixed(2)}</TableCell>
-                            <TableCell>{formatTimestamp(proposal.created_at)}</TableCell>
+                      </TableHeader>
+                      <TableBody>
+                        {(schemaOverview?.proposals ?? []).length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-muted-foreground">
+                              No schema proposals yet.
+                            </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                        ) : (
+                          schemaOverview?.proposals.slice(0, 12).map((proposal) => (
+                            <TableRow key={proposal.id}>
+                              <TableCell>{proposal.proposal_type}</TableCell>
+                              <TableCell>{proposal.status}</TableCell>
+                              <TableCell>{proposal.confidence.toFixed(2)}</TableCell>
+                              <TableCell>{formatTimestamp(proposal.created_at)}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            ) : null}
           </Tabs>
         </>
       )}

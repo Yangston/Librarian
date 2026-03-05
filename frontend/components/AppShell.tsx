@@ -2,13 +2,32 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, Library, Sparkles } from "lucide-react";
+import { Activity, Library, Settings2, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { warmWorkspaceApi } from "@/lib/api";
+import { type AppDensity, type AppTheme } from "@/lib/settings";
+import { AppSettingsProvider, useAppSettings } from "@/components/AppSettingsProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger
+} from "@/components/ui/sheet";
 import {
   Sidebar,
   SidebarContent,
@@ -86,7 +105,96 @@ function NewChatSidebarButton() {
   );
 }
 
-export default function AppShell({
+function SettingsSheetButton() {
+  const { settings, resetSettings, setDensity, setDevMode, setReducedMotion, setTheme } =
+    useAppSettings();
+
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="outline" size="sm" type="button" aria-label="Open settings">
+          <Settings2 className="h-4 w-4" />
+          <span className="hidden sm:inline">Settings</span>
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-[360px] space-y-5 overflow-y-auto sm:max-w-[420px]">
+        <SheetHeader>
+          <SheetTitle>Settings</SheetTitle>
+          <SheetDescription>Appearance, mode, and accessibility preferences for this browser.</SheetDescription>
+        </SheetHeader>
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Appearance</h3>
+          <label className="field">
+            <Label htmlFor="settings-theme">Theme</Label>
+            <Select value={settings.theme} onValueChange={(value) => setTheme(value as AppTheme)}>
+              <SelectTrigger id="settings-theme">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="system">System</SelectItem>
+                <SelectItem value="light">Light</SelectItem>
+                <SelectItem value="dark">Dark</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="field">
+            <Label htmlFor="settings-density">Density</Label>
+            <Select value={settings.density} onValueChange={(value) => setDensity(value as AppDensity)}>
+              <SelectTrigger id="settings-density">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="comfortable">Comfortable</SelectItem>
+                <SelectItem value="compact">Compact</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Mode</h3>
+          <div className="flex items-start gap-2 rounded-md border border-border/70 px-3 py-2">
+            <Checkbox
+              id="settings-dev-mode"
+              checked={settings.devMode}
+              onCheckedChange={(checked) => setDevMode(Boolean(checked))}
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor="settings-dev-mode">Dev mode</Label>
+              <p className="text-xs text-muted-foreground">
+                On keeps all technical and provenance details visible.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Accessibility</h3>
+          <div className="flex items-start gap-2 rounded-md border border-border/70 px-3 py-2">
+            <Checkbox
+              id="settings-reduced-motion"
+              checked={settings.reducedMotion}
+              onCheckedChange={(checked) => setReducedMotion(Boolean(checked))}
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor="settings-reduced-motion">Reduced motion</Label>
+              <p className="text-xs text-muted-foreground">
+                Disables route and interaction animations.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <Button type="button" variant="outline" onClick={resetSettings}>
+          Reset to defaults
+        </Button>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function AppShellFrame({
   children
 }: Readonly<{
   children: React.ReactNode;
@@ -211,13 +319,16 @@ export default function AppShell({
               <p className="text-sm font-medium">Browse, inspect, and shape learned knowledge.</p>
             </div>
           </div>
-          <div className="hidden items-center gap-2 sm:flex">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/app/search">Search</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/app/graph">Graph Studio</Link>
-            </Button>
+          <div className="flex items-center gap-2">
+            <SettingsSheetButton />
+            <div className="hidden items-center gap-2 sm:flex">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/app/search">Search</Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link href="/app/graph">Graph Studio</Link>
+              </Button>
+            </div>
           </div>
         </header>
         <main id="product-content" className="productContent px-4 pb-6 pt-4 md:px-6">
@@ -225,5 +336,17 @@ export default function AppShell({
         </main>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+export default function AppShell({
+  children
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <AppSettingsProvider>
+      <AppShellFrame>{children}</AppShellFrame>
+    </AppSettingsProvider>
   );
 }

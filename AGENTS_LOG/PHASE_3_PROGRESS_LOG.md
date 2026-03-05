@@ -619,3 +619,75 @@ Summary:
     - `pytest tests -q -p no:cacheprovider` -> `31 passed`
   - Frontend build:
     - `npm run build` -> passing
+
+### Settings menu + user-facing mode simplification (2026-03-04)
+
+- Step number:
+  - `Phase 3 UX refinement: settings + dev-mode gating`
+- Summary:
+  - Implemented global frontend settings system with persistent browser storage:
+    - theme (`system`/`light`/`dark`)
+    - dev mode toggle (default `on`, preserving current behavior)
+    - density (`comfortable`/`compact`)
+    - reduced motion toggle
+  - Added pre-hydration theme/settings bootstrap script in root layout to avoid theme mismatch flashes.
+  - Added app-shell settings sheet (topbar `Settings` control) and wired settings provider at `/app` shell boundary.
+  - Added reusable dev-mode helpers:
+    - `useIsDevMode`
+    - `DevOnly`
+    - `UserModeOnly`
+    - `WhenDevOff`
+  - Applied dev-mode-off simplification across data-heavy pages while keeping mutation actions visible:
+    - dashboard (`/app`) hides schema proposal-heavy surface
+    - entities list/detail hides non-critical metadata and technical columns
+    - explain detail hides extractor/canonicalization/resolution technical blocks
+    - conversations list/detail hides technical counts/schema cluster blocks
+    - search hides technical preview metadata and explain-link column in user mode
+    - graph hides workspace-scope advanced controls, aliases line, and confidence inspector column
+    - schema hides canonical/frequency/proposal-heavy sections in user mode
+    - chat hides context-controls panel/toggle in user mode
+  - Added CSS hooks for compact density and explicit reduced-motion override using root data attributes.
+- Files changed:
+  - `frontend/lib/settings.ts`
+  - `frontend/components/AppSettingsProvider.tsx`
+  - `frontend/components/AppShell.tsx`
+  - `frontend/app/layout.tsx`
+  - `frontend/app/globals.css`
+  - `frontend/app/app/page.tsx`
+  - `frontend/app/app/entities/page.tsx`
+  - `frontend/app/app/entities/[entity_id]/page.tsx`
+  - `frontend/app/app/explain/[kind]/[id]/page.tsx`
+  - `frontend/app/app/conversations/page.tsx`
+  - `frontend/app/app/conversations/[conversation_id]/page.tsx`
+  - `frontend/app/app/search/page.tsx`
+  - `frontend/app/app/graph/page.tsx`
+  - `frontend/app/app/schema/page.tsx`
+  - `frontend/app/app/chat/page.tsx`
+- Migration status:
+  - `No migration required` (frontend-only behavior + presentation changes)
+- Test/build status:
+  - Frontend:
+    - `npm run build` (from `frontend/`) -> passing
+- Next step:
+  - Manual UX smoke pass in browser for settings persistence and dev-mode-off visibility matrix verification across desktop/mobile.
+
+### Settings hydration follow-up fix (2026-03-04)
+
+- Step number:
+  - `Phase 3 UX refinement: settings persistence safety`
+- Summary:
+  - Prevented first-hydration localStorage overwrite in `AppSettingsProvider`.
+  - Provider now:
+    - initializes with defaults,
+    - hydrates from localStorage on mount,
+    - writes back only after hydration completes.
+  - Keeps pre-hydration root script as source of initial visual state while preserving existing saved settings.
+- Files changed:
+  - `frontend/components/AppSettingsProvider.tsx`
+- Migration status:
+  - `No migration required`
+- Test/build status:
+  - Frontend:
+    - `npm run build` (from `frontend/`) -> passing
+- Next step:
+  - Manual settings persistence smoke check across refresh + new tab.

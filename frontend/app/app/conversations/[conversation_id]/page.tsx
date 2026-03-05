@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type ConversationSummaryData,
   type MessageRead,
@@ -25,6 +26,7 @@ import { Textarea } from "../../../../components/ui/textarea";
 type Tab = "chat" | "summary";
 
 export default function ConversationDetailPage() {
+  const isDevMode = useIsDevMode();
   const params = useParams<{ conversation_id: string }>();
   const conversationId = useMemo(() => decodeURIComponent(params.conversation_id), [params.conversation_id]);
   const [tab, setTab] = useState<Tab>("chat");
@@ -282,13 +284,13 @@ export default function ConversationDetailPage() {
                         <TableHead>Entity</TableHead>
                         <TableHead>Field</TableHead>
                         <TableHead>Value</TableHead>
-                        <TableHead>Confidence</TableHead>
+                        {isDevMode ? <TableHead>Confidence</TableHead> : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {(summary?.key_facts ?? []).length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={4} className="text-muted-foreground">
+                          <TableCell colSpan={isDevMode ? 4 : 3} className="text-muted-foreground">
                             No facts found.
                           </TableCell>
                         </TableRow>
@@ -298,7 +300,7 @@ export default function ConversationDetailPage() {
                             <TableCell>{fact.subject_entity_name}</TableCell>
                             <TableCell>{fact.predicate}</TableCell>
                             <TableCell>{fact.object_value}</TableCell>
-                            <TableCell>{fact.confidence.toFixed(2)}</TableCell>
+                            {isDevMode ? <TableCell>{fact.confidence.toFixed(2)}</TableCell> : null}
                           </TableRow>
                         ))
                       )}
@@ -307,43 +309,45 @@ export default function ConversationDetailPage() {
                 </CardContent>
               </Card>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Schema Learned in This Conversation</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-1">
-                    <p className="text-sm text-muted-foreground">
-                      Types: {(summary?.schema_changes_triggered.node_labels ?? []).join(", ") || "-"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Fields: {(summary?.schema_changes_triggered.field_labels ?? []).join(", ") || "-"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Relations: {(summary?.schema_changes_triggered.relation_labels ?? []).join(", ") || "-"}
-                    </p>
-                  </CardContent>
-                </Card>
+              {isDevMode ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Schema Learned in This Conversation</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        Types: {(summary?.schema_changes_triggered.node_labels ?? []).join(", ") || "-"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Fields: {(summary?.schema_changes_triggered.field_labels ?? []).join(", ") || "-"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Relations: {(summary?.schema_changes_triggered.relation_labels ?? []).join(", ") || "-"}
+                      </p>
+                    </CardContent>
+                  </Card>
 
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Relation Clusters</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="simpleList">
-                      {(summary?.relation_clusters ?? []).length === 0 ? (
-                        <li className="muted">No clusters available.</li>
-                      ) : (
-                        summary?.relation_clusters.map((cluster) => (
-                          <li key={cluster.relation_label}>
-                            <strong>{cluster.relation_label}</strong> ({cluster.relation_count})
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  </CardContent>
-                </Card>
-              </div>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Relation Clusters</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="simpleList">
+                        {(summary?.relation_clusters ?? []).length === 0 ? (
+                          <li className="muted">No clusters available.</li>
+                        ) : (
+                          summary?.relation_clusters.map((cluster) => (
+                            <li key={cluster.relation_label}>
+                              <strong>{cluster.relation_label}</strong> ({cluster.relation_count})
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : null}
             </>
           )}
         </TabsContent>

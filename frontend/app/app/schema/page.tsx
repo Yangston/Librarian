@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type SchemaOverviewData,
   deleteSchemaField,
@@ -52,6 +53,7 @@ function proposalAnchorLinks(payload: Record<string, unknown>): Array<{ label: s
 }
 
 export default function SchemaPage() {
+  const isDevMode = useIsDevMode();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +69,9 @@ export default function SchemaPage() {
   const [editDraft, setEditDraft] = useState({ label: "", description: "", examples: "" });
   const [pendingDeleteKey, setPendingDeleteKey] = useState<string | null>(null);
   const hasLoadedOnceRef = useRef(false);
+  const nodeEmptyColSpan = isDevMode ? 6 : 4;
+  const fieldEmptyColSpan = isDevMode ? 7 : 4;
+  const relationEmptyColSpan = isDevMode ? 6 : 4;
 
   useEffect(() => {
     let active = true;
@@ -306,7 +311,7 @@ export default function SchemaPage() {
           {refreshing ? <p className="subtle">Refreshing schema changes...</p> : null}
           <div className="toolbar">
             <Input
-              placeholder="Filter schema + proposals..."
+              placeholder={isDevMode ? "Filter schema + proposals..." : "Filter schema..."}
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
             />
@@ -336,15 +341,15 @@ export default function SchemaPage() {
                     <TableHead>Label</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Examples</TableHead>
-                    <TableHead>Frequency</TableHead>
-                    <TableHead>Last Seen Conversation</TableHead>
+                    {isDevMode ? <TableHead>Frequency</TableHead> : null}
+                    {isDevMode ? <TableHead>Last Seen Conversation</TableHead> : null}
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.nodes.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      <TableCell colSpan={nodeEmptyColSpan} className="text-center text-muted-foreground">
                         No learned types.
                       </TableCell>
                     </TableRow>
@@ -393,8 +398,8 @@ export default function SchemaPage() {
                               node.examples.slice(0, 4).join(" | ") || "-"
                             )}
                           </TableCell>
-                          <TableCell>{node.frequency}</TableCell>
-                          <TableCell>{node.last_seen_conversation_id ?? "-"}</TableCell>
+                          {isDevMode ? <TableCell>{node.frequency}</TableCell> : null}
+                          {isDevMode ? <TableCell>{node.last_seen_conversation_id ?? "-"}</TableCell> : null}
                           <TableCell>
                             {isEditing ? (
                               <div className="inlineActions">
@@ -466,18 +471,18 @@ export default function SchemaPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Label</TableHead>
-                    <TableHead>Canonical</TableHead>
-                    <TableHead>Cluster Hint</TableHead>
+                    {isDevMode ? <TableHead>Canonical</TableHead> : null}
+                    {isDevMode ? <TableHead>Cluster Hint</TableHead> : null}
                     <TableHead>Description</TableHead>
                     <TableHead>Examples</TableHead>
-                    <TableHead>Frequency</TableHead>
+                    {isDevMode ? <TableHead>Frequency</TableHead> : null}
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.fields.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                      <TableCell colSpan={fieldEmptyColSpan} className="text-center text-muted-foreground">
                         No learned fields.
                       </TableCell>
                     </TableRow>
@@ -500,12 +505,14 @@ export default function SchemaPage() {
                               field.label
                             )}
                           </TableCell>
-                          <TableCell>{field.canonical_label ?? field.label}</TableCell>
-                          <TableCell>
-                            {field.canonical_label && field.canonical_label !== field.label
-                              ? `clustered under ${field.canonical_label}`
-                              : "canonical root"}
-                          </TableCell>
+                          {isDevMode ? <TableCell>{field.canonical_label ?? field.label}</TableCell> : null}
+                          {isDevMode ? (
+                            <TableCell>
+                              {field.canonical_label && field.canonical_label !== field.label
+                                ? `clustered under ${field.canonical_label}`
+                                : "canonical root"}
+                            </TableCell>
+                          ) : null}
                           <TableCell>
                             {isEditing ? (
                               <Input
@@ -532,7 +539,7 @@ export default function SchemaPage() {
                               field.examples.slice(0, 4).join(" | ") || "-"
                             )}
                           </TableCell>
-                          <TableCell>{field.frequency}</TableCell>
+                          {isDevMode ? <TableCell>{field.frequency}</TableCell> : null}
                           <TableCell>
                             {isEditing ? (
                               <div className="inlineActions">
@@ -604,17 +611,17 @@ export default function SchemaPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Label</TableHead>
-                    <TableHead>Canonical</TableHead>
+                    {isDevMode ? <TableHead>Canonical</TableHead> : null}
                     <TableHead>Description</TableHead>
                     <TableHead>Examples</TableHead>
-                    <TableHead>Frequency</TableHead>
+                    {isDevMode ? <TableHead>Frequency</TableHead> : null}
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.relations.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      <TableCell colSpan={relationEmptyColSpan} className="text-center text-muted-foreground">
                         No learned relations.
                       </TableCell>
                     </TableRow>
@@ -637,7 +644,7 @@ export default function SchemaPage() {
                               relation.label
                             )}
                           </TableCell>
-                          <TableCell>{relation.canonical_label ?? relation.label}</TableCell>
+                          {isDevMode ? <TableCell>{relation.canonical_label ?? relation.label}</TableCell> : null}
                           <TableCell>
                             {isEditing ? (
                               <Input
@@ -664,7 +671,7 @@ export default function SchemaPage() {
                               relation.examples.slice(0, 4).join(" | ") || "-"
                             )}
                           </TableCell>
-                          <TableCell>{relation.frequency}</TableCell>
+                          {isDevMode ? <TableCell>{relation.frequency}</TableCell> : null}
                           <TableCell>
                             {isEditing ? (
                               <div className="inlineActions">
@@ -732,79 +739,85 @@ export default function SchemaPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 bg-card/95">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Proposals (schema_proposals)</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              <Table className="min-w-[960px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Confidence</TableHead>
-                    <TableHead>Affected Items</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Rationale/Evidence</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.proposals.length === 0 ? (
+          {isDevMode ? (
+            <Card className="border-border/70 bg-card/95">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Proposals (schema_proposals)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-0">
+                <Table className="min-w-[960px]">
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        No proposals.
-                      </TableCell>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Confidence</TableHead>
+                      <TableHead>Affected Items</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Rationale/Evidence</TableHead>
                     </TableRow>
-                  ) : (
-                    filtered.proposals.slice(0, proposalLimit).map((proposal) => {
-                      const links = proposalAnchorLinks(proposal.payload);
-                      return (
-                        <TableRow key={proposal.id}>
-                          <TableCell>{proposal.proposal_type}</TableCell>
-                          <TableCell>{proposal.status}</TableCell>
-                          <TableCell>{proposal.confidence.toFixed(2)}</TableCell>
-                          <TableCell>
-                            {links.length === 0
-                              ? "-"
-                              : links.map((link) => (
-                                  <a
-                                    key={`${proposal.id}-${link.href}`}
-                                    href={link.href}
-                                    className="inlineLink schemaInlineLink"
-                                  >
-                                    {link.label}
-                                  </a>
-                                ))}
-                          </TableCell>
-                          <TableCell>{formatTimestamp(proposal.created_at)}</TableCell>
-                          <TableCell>
-                            <details className="schemaDetails">
-                              <summary>View</summary>
-                              <pre className="codeMini schemaCodeMini">
-                                {JSON.stringify(
-                                  {
-                                    payload: proposal.payload,
-                                    evidence: proposal.evidence
-                                  },
-                                  null,
-                                  2
-                                )}
-                              </pre>
-                            </details>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            {filtered.proposals.length > proposalLimit ? (
-              <Button variant="outline" type="button" onClick={() => setProposalLimit((current) => current + PAGE_SIZE)}>
-                Load more proposals
-              </Button>
-            ) : null}
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.proposals.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground">
+                          No proposals.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filtered.proposals.slice(0, proposalLimit).map((proposal) => {
+                        const links = proposalAnchorLinks(proposal.payload);
+                        return (
+                          <TableRow key={proposal.id}>
+                            <TableCell>{proposal.proposal_type}</TableCell>
+                            <TableCell>{proposal.status}</TableCell>
+                            <TableCell>{proposal.confidence.toFixed(2)}</TableCell>
+                            <TableCell>
+                              {links.length === 0
+                                ? "-"
+                                : links.map((link) => (
+                                    <a
+                                      key={`${proposal.id}-${link.href}`}
+                                      href={link.href}
+                                      className="inlineLink schemaInlineLink"
+                                    >
+                                      {link.label}
+                                    </a>
+                                  ))}
+                            </TableCell>
+                            <TableCell>{formatTimestamp(proposal.created_at)}</TableCell>
+                            <TableCell>
+                              <details className="schemaDetails">
+                                <summary>View</summary>
+                                <pre className="codeMini schemaCodeMini">
+                                  {JSON.stringify(
+                                    {
+                                      payload: proposal.payload,
+                                      evidence: proposal.evidence
+                                    },
+                                    null,
+                                    2
+                                  )}
+                                </pre>
+                              </details>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+                {filtered.proposals.length > proposalLimit ? (
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => setProposalLimit((current) => current + PAGE_SIZE)}
+                  >
+                    Load more proposals
+                  </Button>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
         </>
       ) : null}
 

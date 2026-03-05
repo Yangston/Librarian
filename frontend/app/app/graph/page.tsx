@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useIsDevMode } from "@/components/AppSettingsProvider";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
@@ -85,6 +86,7 @@ function mapScopedGraphToConversationGraph(payload: Awaited<ReturnType<typeof ge
 }
 
 export default function GraphPage() {
+  const isDevMode = useIsDevMode();
   const [viewMode, setViewMode] = useState<"conversation" | "workspace">("conversation");
   const [conversationList, setConversationList] = useState<ConversationsListResponse | null>(null);
   const [conversationInput, setConversationInput] = useState("");
@@ -119,6 +121,12 @@ export default function GraphPage() {
   const canvasRef = useRef<ConversationGraphCanvasHandle | null>(null);
   const graphPanelRef = useRef<HTMLDivElement | null>(null);
   const loadedConversationRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isDevMode && viewMode !== "conversation") {
+      setViewMode("conversation");
+    }
+  }, [isDevMode, viewMode]);
 
   async function loadConversations(queryConversationId: string | null) {
     const conversations = await getConversations({ limit: 200, offset: 0 });
@@ -248,7 +256,10 @@ export default function GraphPage() {
         const queryIncludeExternal = query.get("include_external");
         await loadConversations(queryConversationId);
         await loadPods();
-        if (queryScopeMode === "global" || queryScopeMode === "pod" || queryScopeMode === "collection") {
+        if (
+          isDevMode &&
+          (queryScopeMode === "global" || queryScopeMode === "pod" || queryScopeMode === "collection")
+        ) {
           setViewMode("workspace");
           setWorkspaceScopeMode(queryScopeMode);
           setScopePodId(queryPodId || "__none__");
@@ -274,7 +285,7 @@ export default function GraphPage() {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isDevMode]);
 
   useEffect(() => {
     if (scopePodId === "__none__") {
@@ -780,21 +791,26 @@ export default function GraphPage() {
         </CardHeader>
         <CardContent>
           <form className="graphTopbar" onSubmit={handleLoadGraph}>
-            <label className="field">
-              <Label>View Mode</Label>
-              <Select value={viewMode} onValueChange={(value) => setViewMode(value as "conversation" | "workspace")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="conversation">Conversation</SelectItem>
-                  <SelectItem value="workspace">Workspace Scope</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
+            {isDevMode ? (
+              <label className="field">
+                <Label>View Mode</Label>
+                <Select
+                  value={viewMode}
+                  onValueChange={(value) => setViewMode(value as "conversation" | "workspace")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="conversation">Conversation</SelectItem>
+                    <SelectItem value="workspace">Workspace Scope</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : null}
             <label className="field">
               <Label>{viewMode === "conversation" ? "Conversation" : "Scope"}</Label>
-              {viewMode === "conversation" ? (
+              {!isDevMode || viewMode === "conversation" ? (
                 <>
                   <Input
                     list="conversation-list"
@@ -826,7 +842,7 @@ export default function GraphPage() {
                 </Select>
               )}
             </label>
-            {viewMode === "workspace" ? (
+            {isDevMode && viewMode === "workspace" ? (
               <label className="field">
                 <Label>Pod</Label>
                 <Select value={scopePodId} onValueChange={setScopePodId}>
@@ -844,7 +860,7 @@ export default function GraphPage() {
                 </Select>
               </label>
             ) : null}
-            {viewMode === "workspace" ? (
+            {isDevMode && viewMode === "workspace" ? (
               <label className="field">
                 <Label>Collection</Label>
                 <Select value={scopeCollectionId} onValueChange={setScopeCollectionId}>
@@ -905,7 +921,7 @@ export default function GraphPage() {
                 </SelectContent>
               </Select>
             </label>
-            {viewMode === "workspace" ? (
+            {isDevMode && viewMode === "workspace" ? (
               <>
                 <label className="field">
                   <Label>Collection 1-hop</Label>
@@ -1044,7 +1060,9 @@ export default function GraphPage() {
                   <p className="subtle">
                     <strong>{selectedNode.canonical_name}</strong> ({normalizeTypeLabel(selectedNode.type_label)})
                   </p>
-                  <p className="subtle">Aliases: {selectedNode.known_aliases_json.join(", ") || "(none)"}</p>
+                  {isDevMode ? (
+                    <p className="subtle">Aliases: {selectedNode.known_aliases_json.join(", ") || "(none)"}</p>
+                  ) : null}
                   {isPinnedInspector ? (
                     <>
                       <form
@@ -1109,14 +1127,17 @@ export default function GraphPage() {
                         <th>From</th>
                         <th>Relation</th>
                         <th>To</th>
-                        <th>Confidence</th>
+                        {isDevMode ? <th>Confidence</th> : null}
                         {isPinnedInspector ? <th>Actions</th> : null}
                       </tr>
                     </thead>
                     <tbody>
                       {selectedNodeRelations.length === 0 ? (
                         <tr>
-                          <td colSpan={isPinnedInspector ? 5 : 4} className="emptyCell">
+                          <td
+                            colSpan={isPinnedInspector ? (isDevMode ? 5 : 4) : isDevMode ? 4 : 3}
+                            className="emptyCell"
+                          >
                             No connected relations.
                           </td>
                         </tr>
@@ -1143,22 +1164,24 @@ export default function GraphPage() {
                                 )}
                               </td>
                               <td>{relation.to_entity_name}</td>
-                              <td>
-                                {isEditing ? (
-                                  <Input
-                                    className="compactInput"
-                                    value={relationDraft.confidence}
-                                    onChange={(event) =>
-                                      setRelationDraft((current) => ({
-                                        ...current,
-                                        confidence: event.target.value
-                                      }))
-                                    }
-                                  />
-                                ) : (
-                                  relation.confidence.toFixed(2)
-                                )}
-                              </td>
+                              {isDevMode ? (
+                                <td>
+                                  {isEditing ? (
+                                    <Input
+                                      className="compactInput"
+                                      value={relationDraft.confidence}
+                                      onChange={(event) =>
+                                        setRelationDraft((current) => ({
+                                          ...current,
+                                          confidence: event.target.value
+                                        }))
+                                      }
+                                    />
+                                  ) : (
+                                    relation.confidence.toFixed(2)
+                                  )}
+                                </td>
+                              ) : null}
                               {isPinnedInspector ? (
                                 <td>
                                   {isEditing ? (
