@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useIsDevMode } from "@/components/AppSettingsProvider";
+import { ExplainSidePanel, type ExplainTarget } from "@/components/explain/ExplainSidePanel";
 import {
   deleteEntityRecord,
   deleteFact,
@@ -114,7 +115,14 @@ export default function EntityDetailPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [explainTarget, setExplainTarget] = useState<ExplainTarget | null>(null);
+  const [explainOpen, setExplainOpen] = useState(false);
   const loadedEntityIdRef = useRef<number | null>(null);
+
+  function openExplain(target: ExplainTarget) {
+    setExplainTarget(target);
+    setExplainOpen(true);
+  }
 
   useEffect(() => {
     if (!Number.isFinite(entityId) || entityId < 1) {
@@ -761,7 +769,20 @@ export default function EntityDetailPage() {
                         {isDevMode ? <TableCell>{formatTimestamp(fact.created_at)}</TableCell> : null}
                         {isDevMode ? (
                           <TableCell>
-                            <Link href={`/app/explain/facts/${fact.id}`}>Explain</Link>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                openExplain({
+                                  claimKind: "fact",
+                                  claimId: fact.id,
+                                  title: `${fact.subject_entity_name} ${fact.rawLabel} ${fact.object_value}`
+                                })
+                              }
+                            >
+                              Explain
+                            </Button>
                           </TableCell>
                         ) : null}
                         <TableCell>
@@ -904,7 +925,20 @@ export default function EntityDetailPage() {
                           ) : null}
                           {isDevMode ? (
                             <TableCell>
-                              <Link href={`/app/explain/relations/${relation.id}`}>Explain</Link>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  openExplain({
+                                    claimKind: "relation",
+                                    claimId: relation.id,
+                                    title: `${relation.from_entity_name} ${relation.relation_type} ${relation.to_entity_name}`
+                                  })
+                                }
+                              >
+                                Explain
+                              </Button>
                             </TableCell>
                           ) : null}
                           <TableCell>
@@ -1051,7 +1085,20 @@ export default function EntityDetailPage() {
                           ) : null}
                           {isDevMode ? (
                             <TableCell>
-                              <Link href={`/app/explain/relations/${relation.id}`}>Explain</Link>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  openExplain({
+                                    claimKind: "relation",
+                                    claimId: relation.id,
+                                    title: `${relation.from_entity_name} ${relation.relation_type} ${relation.to_entity_name}`
+                                  })
+                                }
+                              >
+                                Explain
+                              </Button>
                             </TableCell>
                           ) : null}
                           <TableCell>
@@ -1288,6 +1335,7 @@ export default function EntityDetailPage() {
         }}
         isDeleting={busyKey !== null && busyKey.startsWith("relation-")}
       />
+      <ExplainSidePanel open={explainOpen} target={explainTarget} onOpenChange={setExplainOpen} />
     </div>
   );
 }

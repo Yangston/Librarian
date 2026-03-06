@@ -37,6 +37,7 @@ from app.services.embeddings import (
     hash_embed_text,
 )
 from app.services.conversations import get_conversation_pod_id
+from app.services.experience_projection import rebuild_experience_projection
 from app.services.organization import rebuild_pod_themes_for_conversation
 from app.services.schema_stabilization import run_schema_stabilization
 
@@ -405,6 +406,11 @@ def _replace_extracted_records(
     if post_processing_mode == "inline":
         run_schema_stabilization(db, conversation_id=conversation_id)
 
+    rebuild_experience_projection(
+        db,
+        conversation_id=conversation_id,
+        space_id=conversation_pod_id,
+    )
     db.commit()
     return {"entities": len(result.entities), "facts": facts_created, "relations": relations_created}
 

@@ -550,6 +550,164 @@ export type SchemaRelationMutationRead = {
   examples_json: string[];
 };
 
+export type SpaceV2 = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  page_count: number;
+  item_count: number;
+  created_at: string;
+  updated_at: string;
+  technical_details?: Record<string, unknown> | null;
+};
+
+export type SpacePageV2 = {
+  id: number;
+  space_id: number;
+  parent_id: number | null;
+  kind: "page" | "table";
+  slug: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  item_count: number;
+  updated_at: string;
+  technical_details?: Record<string, unknown> | null;
+};
+
+export type SpacePagesResponseV2 = {
+  space_id: number;
+  items: SpacePageV2[];
+};
+
+export type LibraryItemPropertyV2 = {
+  property_key: string;
+  label: string;
+  value: string;
+  claim_index_id: number | null;
+  claim_kind?: string | null;
+  claim_id?: number | null;
+  last_observed_at?: string | null;
+};
+
+export type LibraryItemRowV2 = {
+  id: number;
+  entity_id: number;
+  name: string;
+  type_label: string;
+  summary: string | null;
+  mention_count: number;
+  last_seen_at: string;
+  space_id: number | null;
+  space_name: string | null;
+  page_id: number | null;
+  page_name: string | null;
+  key_properties: LibraryItemPropertyV2[];
+  technical_details?: Record<string, unknown> | null;
+};
+
+export type LibraryItemsResponseV2 = {
+  items: LibraryItemRowV2[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type LibraryItemLinkV2 = {
+  relation_type: string;
+  relation_count: number;
+  direction: "incoming" | "outgoing";
+  other_item_id: number;
+  other_item_name: string;
+  last_seen_at: string;
+};
+
+export type LibraryItemActivityRowV2 = {
+  claim_index_id: number;
+  claim_kind: "fact" | "relation";
+  claim_id: number;
+  label: string;
+  value_text: string | null;
+  confidence: number | null;
+  occurred_at: string;
+  related_item_id: number | null;
+  related_item_name: string | null;
+  technical_details?: Record<string, unknown> | null;
+};
+
+export type LibraryItemActivityResponseV2 = {
+  item_id: number;
+  items: LibraryItemActivityRowV2[];
+};
+
+export type LibraryItemDetailV2 = {
+  id: number;
+  entity_id: number;
+  name: string;
+  type_label: string;
+  summary: string | null;
+  mention_count: number;
+  last_seen_at: string;
+  space_id: number | null;
+  space_name: string | null;
+  page_id: number | null;
+  page_name: string | null;
+  properties: LibraryItemPropertyV2[];
+  links: LibraryItemLinkV2[];
+  activity_preview: LibraryItemActivityRowV2[];
+  technical_details?: Record<string, unknown> | null;
+};
+
+export type PropertyCatalogRowV2 = {
+  id: number;
+  display_label: string;
+  kind: "field" | "relation";
+  status: "stable" | "emerging" | "deprecated";
+  mention_count: number;
+  last_seen_at: string | null;
+  technical_details?: Record<string, unknown> | null;
+};
+
+export type PropertyCatalogResponseV2 = {
+  items: PropertyCatalogRowV2[];
+  total: number;
+};
+
+export type UnifiedClaimExplainV2 = {
+  claim_index_id: number;
+  claim_kind: "fact" | "relation";
+  claim_id: number;
+  title: string;
+  why_this_exists: string;
+  evidence_snippets: string[];
+  source_messages: SourceMessageEvidence[];
+  canonicalization: SchemaCanonicalizationInfo | null;
+  technical_details?: Record<string, unknown> | null;
+};
+
+export type SearchResultCardV2 = {
+  id: string;
+  kind: "item" | "claim";
+  title: string;
+  subtitle: string | null;
+  score: number;
+  href: string;
+  technical_details?: Record<string, unknown> | null;
+};
+
+export type SearchResultGroupV2 = {
+  key: "items" | "claims";
+  label: string;
+  count: number;
+  items: SearchResultCardV2[];
+};
+
+export type SearchV2Response = {
+  query: string;
+  groups: SearchResultGroupV2[];
+};
+
 export async function getConversations(params?: {
   limit?: number;
   offset?: number;
@@ -877,6 +1035,175 @@ export async function deleteSchemaRelation(schemaRelationId: number): Promise<De
   return apiDelete<DeleteResult>(`/schema/relations/${schemaRelationId}`);
 }
 
+export async function getSpacesV2(params?: {
+  include_technical?: boolean;
+}): Promise<SpaceV2[]> {
+  const query = buildQuery({
+    include_technical: params?.include_technical ?? false
+  });
+  return apiGet<SpaceV2[]>(`/v2/spaces${query}`);
+}
+
+export async function createSpaceV2(payload: {
+  name: string;
+  description?: string | null;
+  include_technical?: boolean;
+}): Promise<SpaceV2> {
+  const query = buildQuery({
+    include_technical: payload.include_technical ?? false
+  });
+  return apiPost<SpaceV2>(`/v2/spaces${query}`, {
+    name: payload.name,
+    description: payload.description
+  });
+}
+
+export async function updateSpaceV2(
+  spaceId: number,
+  payload: {
+    name?: string;
+    description?: string | null;
+    include_technical?: boolean;
+  }
+): Promise<SpaceV2> {
+  const query = buildQuery({
+    include_technical: payload.include_technical ?? false
+  });
+  return apiPatch<SpaceV2>(`/v2/spaces/${spaceId}${query}`, {
+    name: payload.name,
+    description: payload.description
+  });
+}
+
+export async function deleteSpaceV2(spaceId: number): Promise<{ space_id: number; deleted: boolean }> {
+  return apiDelete<{ space_id: number; deleted: boolean }>(`/v2/spaces/${spaceId}`);
+}
+
+export async function getSpacePagesV2(
+  spaceId: number,
+  params?: { include_technical?: boolean }
+): Promise<SpacePagesResponseV2> {
+  const query = buildQuery({
+    include_technical: params?.include_technical ?? false
+  });
+  return apiGet<SpacePagesResponseV2>(`/v2/spaces/${spaceId}/pages${query}`);
+}
+
+export async function getLibraryItemsV2(params?: {
+  limit?: number;
+  offset?: number;
+  q?: string;
+  type_label?: string;
+  space_id?: number;
+  page_id?: number;
+  sort?: "last_active" | "name" | "mentions" | "type";
+  order?: "asc" | "desc";
+  include_technical?: boolean;
+}): Promise<LibraryItemsResponseV2> {
+  const query = buildQuery({
+    limit: params?.limit ?? 25,
+    offset: params?.offset ?? 0,
+    q: params?.q ?? null,
+    type_label: params?.type_label ?? null,
+    space_id: params?.space_id ?? null,
+    page_id: params?.page_id ?? null,
+    sort: params?.sort ?? "last_active",
+    order: params?.order ?? "desc",
+    include_technical: params?.include_technical ?? false
+  });
+  return apiGet<LibraryItemsResponseV2>(`/v2/library/items${query}`);
+}
+
+export async function getLibraryItemV2(
+  itemId: number,
+  params?: { include_technical?: boolean }
+): Promise<LibraryItemDetailV2> {
+  const query = buildQuery({ include_technical: params?.include_technical ?? false });
+  return apiGet<LibraryItemDetailV2>(`/v2/library/items/${itemId}${query}`);
+}
+
+export async function updateLibraryItemV2(
+  itemId: number,
+  payload: {
+    canonical_name?: string;
+    display_name?: string;
+    type_label?: string;
+    type?: string;
+    known_aliases_json?: string[];
+    aliases_json?: string[];
+    tags_json?: string[];
+    include_technical?: boolean;
+  }
+): Promise<LibraryItemDetailV2> {
+  const query = buildQuery({ include_technical: payload.include_technical ?? false });
+  return apiPatch<LibraryItemDetailV2>(`/v2/library/items/${itemId}${query}`, payload);
+}
+
+export async function getLibraryItemActivityV2(
+  itemId: number,
+  params?: { limit?: number; include_technical?: boolean }
+): Promise<LibraryItemActivityResponseV2> {
+  const query = buildQuery({
+    limit: params?.limit ?? 50,
+    include_technical: params?.include_technical ?? false
+  });
+  return apiGet<LibraryItemActivityResponseV2>(`/v2/library/items/${itemId}/activity${query}`);
+}
+
+export async function getPropertiesCatalogV2(params?: {
+  q?: string;
+  status?: "stable" | "emerging" | "deprecated";
+  kind?: "field" | "relation";
+  include_technical?: boolean;
+}): Promise<PropertyCatalogResponseV2> {
+  const query = buildQuery({
+    q: params?.q ?? null,
+    status: params?.status ?? null,
+    kind: params?.kind ?? null,
+    include_technical: params?.include_technical ?? false
+  });
+  return apiGet<PropertyCatalogResponseV2>(`/v2/properties/catalog${query}`);
+}
+
+export async function updatePropertyCatalogV2(
+  propertyId: number,
+  payload: {
+    display_label?: string;
+    status?: "stable" | "emerging" | "deprecated";
+    include_technical?: boolean;
+  }
+): Promise<PropertyCatalogRowV2> {
+  const query = buildQuery({ include_technical: payload.include_technical ?? false });
+  return apiPatch<PropertyCatalogRowV2>(`/v2/properties/catalog/${propertyId}${query}`, payload);
+}
+
+export async function getClaimExplainV2(
+  claimIndexId: number,
+  params?: { include_technical?: boolean }
+): Promise<UnifiedClaimExplainV2> {
+  const query = buildQuery({ include_technical: params?.include_technical ?? false });
+  return apiGet<UnifiedClaimExplainV2>(`/v2/claims/${claimIndexId}/explain${query}`);
+}
+
+export async function searchV2(params: {
+  q: string;
+  conversation_id?: string;
+  type_label?: string;
+  space_id?: number;
+  page_id?: number;
+  include_technical?: boolean;
+}): Promise<SearchV2Response> {
+  const query = buildQuery({
+    q: params.q,
+    conversation_id: params.conversation_id ?? null,
+    type_label: params.type_label ?? null,
+    space_id: params.space_id ?? null,
+    page_id: params.page_id ?? null,
+    include_technical: params.include_technical ?? false
+  });
+  return apiGet<SearchV2Response>(`/v2/search${query}`);
+}
+
 export function warmWorkspaceApi(): Promise<void> {
   if (appWarmupPromise) {
     return appWarmupPromise;
@@ -885,10 +1212,10 @@ export function warmWorkspaceApi(): Promise<void> {
   appWarmupPromise = Promise.allSettled([
     getConversations({ limit: 20, offset: 0 }),
     getConversations({ limit: 200, offset: 0 }),
-    getPods(),
+    getSpacesV2(),
     getRecentEntities(12),
-    getEntitiesCatalog({ limit: 25, offset: 0, sort: "last_seen", order: "desc" }),
-    getSchemaOverview({ limit: 200, proposal_limit: 200 })
+    getLibraryItemsV2({ limit: 25, offset: 0, sort: "last_active", order: "desc" }),
+    getPropertiesCatalogV2()
   ]).then(() => undefined);
 
   return appWarmupPromise;

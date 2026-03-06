@@ -1,160 +1,136 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useIsDevMode } from "@/components/AppSettingsProvider";
-import {
-  type CollectionTreeNode,
-  type EntityListingResponse,
-  deleteEntityRecord,
-  getEntitiesCatalog,
-  getPods,
-  getPodTree,
-  updateEntityRecord
-} from "../../../lib/api";
-import { formatTimestamp } from "../../../lib/format";
-import { Badge } from "../../../components/ui/badge";
-import { Button } from "../../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
-import { DeleteActionButton, DeleteConfirmDialog } from "../../../components/ui/delete-controls";
-import { Input } from "../../../components/ui/input";
-import { Label } from "../../../components/ui/label";
+import { ExplainSidePanel, type ExplainTarget } from "@/components/explain/ExplainSidePanel";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
-} from "../../../components/ui/select";
-import { Checkbox } from "../../../components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
+} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  type LibraryItemRowV2,
+  type LibraryItemsResponseV2,
+  type SpacePageV2,
+  type SpaceV2,
+  getLibraryItemsV2,
+  getSpacePagesV2,
+  getSpacesV2,
+  updateLibraryItemV2
+} from "@/lib/api";
+import { formatTimestamp } from "@/lib/format";
 
 const PAGE_SIZE = 25;
 
-type SortKey = "canonical_name" | "type_label" | "last_seen" | "conversation_count" | "alias_count";
-type SortOrder = "asc" | "desc";
-type CollectionOption = { id: number; name: string };
-
-export default function EntitiesPage() {
+export default function LibraryPage() {
   const isDevMode = useIsDevMode();
+  const [spaces, setSpaces] = useState<SpaceV2[]>([]);
+  const [pages, setPages] = useState<SpacePageV2[]>([]);
+  const [spaceDraft, setSpaceDraft] = useState("__all__");
+  const [pageDraft, setPageDraft] = useState("__all__");
+  const [typeDraft, setTypeDraft] = useState("__all__");
   const [queryDraft, setQueryDraft] = useState("");
-  const [typeDraft, setTypeDraft] = useState("");
-  const [appliedQuery, setAppliedQuery] = useState("");
-  const [appliedType, setAppliedType] = useState("");
-  const [podOptions, setPodOptions] = useState<Array<{ id: number; name: string }>>([]);
-  const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
-  const [podDraft, setPodDraft] = useState("__all__");
-  const [collectionDraft, setCollectionDraft] = useState("__all__");
-  const [appliedPodId, setAppliedPodId] = useState<number | null>(null);
-  const [appliedCollectionId, setAppliedCollectionId] = useState<number | null>(null);
-  const [selectedFields, setSelectedFields] = useState<string[]>([]);
-  const [sort, setSort] = useState<SortKey>("last_seen");
-  const [order, setOrder] = useState<SortOrder>("desc");
+  const [sort, setSort] = useState<"last_active" | "name" | "mentions" | "type">("last_active");
   const [offset, setOffset] = useState(0);
-  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [showTechnicalColumns, setShowTechnicalColumns] = useState(false);
+  const [payload, setPayload] = useState<LibraryItemsResponseV2 | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rowBusyId, setRowBusyId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [payload, setPayload] = useState<EntityListingResponse | null>(null);
-  const [editingEntityId, setEditingEntityId] = useState<number | null>(null);
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState({ canonical_name: "", type_label: "" });
-  const [pendingDeleteEntityId, setPendingDeleteEntityId] = useState<number | null>(null);
-  const hasLoadedOnceRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const [explainTarget, setExplainTarget] = useState<ExplainTarget | null>(null);
+  const [explainOpen, setExplainOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
-    async function loadPods() {
+    async function loadSpaces() {
       try {
-        const pods = await getPods();
+        const rows = await getSpacesV2();
         if (!active) {
           return;
         }
-        setPodOptions(pods.map((pod) => ({ id: pod.id, name: pod.name })));
+        setSpaces(rows);
       } catch {
-        // Keep entity table usable even if pod endpoints fail.
+        // Keep library functional even if spaces fail.
       }
     }
-    void loadPods();
+    void loadSpaces();
     return () => {
       active = false;
     };
   }, []);
 
   useEffect(() => {
-    if (podDraft === "__all__") {
-      setCollectionOptions([]);
-      setCollectionDraft("__all__");
+    if (spaceDraft === "__all__") {
+      setPages([]);
+      setPageDraft("__all__");
       return;
     }
     let active = true;
-    async function loadCollections() {
+    async function loadPages() {
       try {
-        const tree = await getPodTree(Number.parseInt(podDraft, 10));
+        const data = await getSpacePagesV2(Number.parseInt(spaceDraft, 10));
         if (!active) {
           return;
         }
-        const flat: CollectionOption[] = [];
-        const walk = (nodes: CollectionTreeNode[]) => {
-          nodes.forEach((node) => {
-            flat.push({ id: node.collection.id, name: node.collection.name });
-            walk(node.children);
-          });
-        };
-        walk(tree.tree);
-        setCollectionOptions(flat);
+        setPages(data.items);
       } catch {
         if (!active) {
           return;
         }
-        setCollectionOptions([]);
+        setPages([]);
       }
-      setCollectionDraft("__all__");
+      setPageDraft("__all__");
     }
-    void loadCollections();
+    void loadPages();
     return () => {
       active = false;
     };
-  }, [podDraft]);
-
-  useEffect(() => {
-    if (!isDevMode && (sort === "alias_count" || sort === "conversation_count")) {
-      setSort("canonical_name");
-    }
-  }, [isDevMode, sort]);
+  }, [spaceDraft]);
 
   useEffect(() => {
     let active = true;
-    async function load() {
-      if (hasLoadedOnceRef.current) {
+    async function loadLibrary(isRefresh: boolean) {
+      if (isRefresh) {
         setRefreshing(true);
       } else {
         setLoading(true);
       }
       setError(null);
       try {
-        const data = await getEntitiesCatalog({
+        const data = await getLibraryItemsV2({
           limit: PAGE_SIZE,
           offset,
+          q: queryDraft.trim() || undefined,
+          type_label: typeDraft === "__all__" ? undefined : typeDraft,
+          space_id: spaceDraft === "__all__" ? undefined : Number.parseInt(spaceDraft, 10),
+          page_id: pageDraft === "__all__" ? undefined : Number.parseInt(pageDraft, 10),
           sort,
-          order,
-          q: appliedQuery || undefined,
-          type_label: appliedType || undefined,
-          fields: selectedFields,
-          pod_id: appliedPodId ?? undefined,
-          collection_id: appliedCollectionId ?? undefined
+          order: sort === "name" || sort === "type" ? "asc" : "desc",
+          include_technical: isDevMode || showTechnicalColumns
         });
         if (!active) {
           return;
         }
         setPayload(data);
-        hasLoadedOnceRef.current = true;
       } catch (err) {
         if (!active) {
           return;
         }
-        setError(err instanceof Error ? err.message : "Failed to load entities.");
+        setError(err instanceof Error ? err.message : "Failed to load library.");
       } finally {
         if (active) {
           setLoading(false);
@@ -162,215 +138,177 @@ export default function EntitiesPage() {
         }
       }
     }
-    void load();
+    void loadLibrary(offset > 0 || payload !== null);
     return () => {
       active = false;
     };
-  }, [
-    appliedCollectionId,
-    appliedPodId,
-    appliedQuery,
-    appliedType,
-    offset,
-    order,
-    refreshNonce,
-    selectedFields,
-    sort
-  ]);
+  }, [isDevMode, offset, pageDraft, queryDraft, showTechnicalColumns, sort, spaceDraft, typeDraft]);
 
-  function applyFilters(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setOffset(0);
-    setAppliedQuery(queryDraft.trim());
-    setAppliedType(typeDraft.trim());
-    const nextPodId = podDraft === "__all__" ? null : Number.parseInt(podDraft, 10);
-    const nextCollectionId =
-      collectionDraft === "__all__" ? null : Number.parseInt(collectionDraft, 10);
-    setAppliedPodId(Number.isFinite(nextPodId ?? NaN) ? nextPodId : null);
-    setAppliedCollectionId(Number.isFinite(nextCollectionId ?? NaN) ? nextCollectionId : null);
-  }
+  const types = useMemo(() => {
+    const set = new Set((payload?.items ?? []).map((item) => item.type_label).filter(Boolean));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [payload?.items]);
 
-  function toggleField(field: string) {
-    setOffset(0);
-    setSelectedFields((current) =>
-      current.includes(field) ? current.filter((item) => item !== field) : [...current, field]
-    );
-  }
-
-  function beginEditEntity(entityId: number, currentName: string, currentType: string) {
-    setEditingEntityId(entityId);
+  function beginEdit(item: LibraryItemRowV2) {
+    setEditingItemId(item.id);
     setEditDraft({
-      canonical_name: currentName,
-      type_label: currentType || "untyped"
+      canonical_name: item.name,
+      type_label: item.type_label || "Unspecified"
     });
-    setPendingDeleteEntityId(null);
   }
 
-  function cancelEditEntity() {
-    setEditingEntityId(null);
+  function cancelEdit() {
+    setEditingItemId(null);
     setEditDraft({ canonical_name: "", type_label: "" });
   }
 
-  async function saveEntityEdit(entityId: number, currentName: string, currentType: string) {
-    const nextCanonicalName = editDraft.canonical_name.trim();
-    const nextTypeLabel = editDraft.type_label.trim();
-    if (!nextCanonicalName || !nextTypeLabel) {
-      setError("Canonical name and type label are required.");
+  async function saveEdit(itemId: number) {
+    const name = editDraft.canonical_name.trim();
+    const typeLabel = editDraft.type_label.trim();
+    if (!name || !typeLabel) {
+      setError("Name and type are required.");
       return;
     }
-    setRowBusyId(entityId);
+    setRowBusyId(itemId);
     setError(null);
     try {
-      await updateEntityRecord(entityId, {
-        canonical_name: nextCanonicalName || currentName,
-        type_label: nextTypeLabel || currentType || "untyped"
+      await updateLibraryItemV2(itemId, {
+        canonical_name: name,
+        type_label: typeLabel,
+        include_technical: isDevMode || showTechnicalColumns
       });
-      cancelEditEntity();
-      setRefreshNonce((current) => current + 1);
+      setPayload((current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          items: current.items.map((item) =>
+            item.id === itemId ? { ...item, name, type_label: typeLabel } : item
+          )
+        };
+      });
+      cancelEdit();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update entity.");
+      setError(err instanceof Error ? err.message : "Failed to update item.");
     } finally {
       setRowBusyId(null);
     }
   }
 
-  function requestDeleteEntity(entityId: number) {
-    if (editingEntityId === entityId) {
-      cancelEditEntity();
-    }
-    setPendingDeleteEntityId(entityId);
+  function handleSubmitFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setOffset(0);
   }
 
-  function cancelDeleteEntity() {
-    setPendingDeleteEntityId(null);
-  }
-
-  async function confirmDeleteEntity(entityId: number) {
-    setRowBusyId(entityId);
-    setError(null);
-    try {
-      await deleteEntityRecord(entityId);
-      setPendingDeleteEntityId((current) => (current === entityId ? null : current));
-      setRefreshNonce((current) => current + 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete entity.");
-    } finally {
-      setRowBusyId(null);
-    }
+  function openExplain(claimIndexId: number, title: string) {
+    setExplainTarget({ claimIndexId, title });
+    setExplainOpen(true);
   }
 
   const total = payload?.total ?? 0;
   const canPrev = offset > 0;
   const canNext = offset + PAGE_SIZE < total;
-  const fieldChoices = payload?.available_fields ?? [];
-  const visibleFields = useMemo(
-    () =>
-      isDevMode
-        ? selectedFields.filter((field) => fieldChoices.includes(field) || selectedFields.includes(field))
-        : [],
-    [fieldChoices, isDevMode, selectedFields]
-  );
-  const baseColumnCount = isDevMode ? 6 : 3;
-  const pendingDeleteEntity =
-    pendingDeleteEntityId === null
-      ? null
-      : (payload?.items.find((item) => item.id === pendingDeleteEntityId) ?? null);
+  const technicalEnabled = showTechnicalColumns || isDevMode;
 
   return (
     <div className="stackLg routeFade">
       <Card className="border-border/80 bg-card/95">
         <CardHeader className="pb-2">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle className="text-xl">Entities</CardTitle>
-            <p className="subtle">Global record table with dynamic columns generated from learned fields.</p>
-          </div>
-          <div className="flex gap-2">
-            <Button asChild variant="outline">
-              <Link href="/app/search">Search Knowledge</Link>
-            </Button>
-          </div>
+          <CardTitle className="text-xl">Library</CardTitle>
+          <CardDescription>
+            Find items quickly, review key properties, and open explainability context inline.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent>
           <form
-            className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_auto] md:items-end"
-            onSubmit={applyFilters}
+            className="grid gap-2 md:grid-cols-[1fr_180px_180px_180px_160px_auto_auto] md:items-end"
+            onSubmit={handleSubmitFilters}
           >
             <label className="field">
-              <Label>Search</Label>
+              <Label htmlFor="library-query">Search</Label>
               <Input
-                placeholder="Canonical name..."
+                id="library-query"
                 value={queryDraft}
                 onChange={(event) => setQueryDraft(event.target.value)}
+                placeholder="Search name, type, summary..."
               />
             </label>
             <label className="field">
-              <Label>Type Label</Label>
-              <Input
-                placeholder="Company, Person..."
-                value={typeDraft}
-                onChange={(event) => setTypeDraft(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <Label>Sort</Label>
-                <Select value={sort} onValueChange={(value) => setSort(value as SortKey)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="last_seen">Last seen</SelectItem>
-                    <SelectItem value="canonical_name">Canonical name</SelectItem>
-                    <SelectItem value="type_label">Type label</SelectItem>
-                    {isDevMode ? <SelectItem value="conversation_count">Conversation count</SelectItem> : null}
-                    {isDevMode ? <SelectItem value="alias_count">Alias count</SelectItem> : null}
-                  </SelectContent>
-                </Select>
-              </label>
-            <label className="field">
-              <Label>Order</Label>
-              <Select value={order} onValueChange={(value) => setOrder(value as SortOrder)}>
-                <SelectTrigger>
+              <Label htmlFor="library-type">Type</Label>
+              <Select value={typeDraft} onValueChange={setTypeDraft}>
+                <SelectTrigger id="library-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="desc">Descending</SelectItem>
-                  <SelectItem value="asc">Ascending</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
-            <label className="field">
-              <Label>Pod</Label>
-              <Select value={podDraft} onValueChange={setPodDraft}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All pods</SelectItem>
-                  {podOptions.map((pod) => (
-                    <SelectItem key={pod.id} value={String(pod.id)}>
-                      {pod.name}
+                  <SelectItem value="__all__">All types</SelectItem>
+                  {types.map((typeLabel) => (
+                    <SelectItem key={typeLabel} value={typeLabel}>
+                      {typeLabel}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </label>
             <label className="field">
-              <Label>Collection</Label>
-              <Select value={collectionDraft} onValueChange={setCollectionDraft}>
-                <SelectTrigger>
+              <Label htmlFor="library-space">Space</Label>
+              <Select value={spaceDraft} onValueChange={setSpaceDraft}>
+                <SelectTrigger id="library-space">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">All collections</SelectItem>
-                  {collectionOptions.map((collection) => (
-                    <SelectItem key={collection.id} value={String(collection.id)}>
-                      {collection.name}
+                  <SelectItem value="__all__">All spaces</SelectItem>
+                  {spaces.map((space) => (
+                    <SelectItem key={space.id} value={String(space.id)}>
+                      {space.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </label>
-            <Button type="submit">Apply</Button>
+            <label className="field">
+              <Label htmlFor="library-page">Page</Label>
+              <Select value={pageDraft} onValueChange={setPageDraft}>
+                <SelectTrigger id="library-page">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All pages</SelectItem>
+                  {pages.map((page) => (
+                    <SelectItem key={page.id} value={String(page.id)}>
+                      {page.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="field">
+              <Label htmlFor="library-sort">Sort</Label>
+              <Select
+                value={sort}
+                onValueChange={(value) => setSort(value as "last_active" | "name" | "mentions" | "type")}
+              >
+                <SelectTrigger id="library-sort">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="last_active">Last active</SelectItem>
+                  <SelectItem value="mentions">Mentions</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="type">Type</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={showTechnicalColumns}
+                onCheckedChange={(value) => setShowTechnicalColumns(Boolean(value))}
+              />
+              Show technical columns
+            </label>
+            <Button type="submit" variant="outline">
+              Apply
+            </Button>
           </form>
         </CardContent>
       </Card>
@@ -381,190 +319,150 @@ export default function EntitiesPage() {
         </Card>
       ) : null}
 
-      {isDevMode ? (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Dynamic Columns</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {fieldChoices.slice(0, 16).map((field) => (
-                <label
-                  className="inline-flex items-center gap-2 rounded-md border border-border/70 px-2.5 py-1.5 text-xs"
-                  key={field}
-                  htmlFor={`field-${field}`}
-                >
-                  <Checkbox
-                    id={`field-${field}`}
-                    checked={selectedFields.includes(field)}
-                    onCheckedChange={() => toggleField(field)}
-                  />
-                  <span>{field}</span>
-                </label>
-              ))}
-              {fieldChoices.length === 0 ? <span className="muted">No dynamic fields available yet.</span> : null}
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <Card>
+      <Card className="border-border/80 bg-card/95">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-lg">Entity Records</CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">Total: {total}</Badge>
-              <Badge variant="outline">Columns: {visibleFields.length + baseColumnCount}</Badge>
-              {refreshing ? <Badge variant="outline">Refreshing...</Badge> : null}
+            <CardTitle className="text-lg">Items</CardTitle>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{total} total</Badge>
+              {refreshing ? <Badge variant="outline">Refreshing</Badge> : null}
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading entities...</p>
-        ) : (
-          <>
+        <CardContent className="space-y-3">
+          {loading ? (
+            <p className="subtle">Loading library...</p>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Canonical Name</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
-                  {isDevMode ? <TableHead>Aliases</TableHead> : null}
-                  {isDevMode ? <TableHead>Last Seen</TableHead> : null}
-                  {isDevMode ? <TableHead>Conversations</TableHead> : null}
+                  <TableHead>Last active</TableHead>
+                  <TableHead>Mentions</TableHead>
+                  <TableHead>Key properties</TableHead>
+                  {technicalEnabled ? <TableHead>Technical</TableHead> : null}
                   <TableHead>Actions</TableHead>
-                  {visibleFields.map((field) => (
-                    <TableHead key={field}>{field}</TableHead>
-                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                  {(payload?.items ?? []).length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={baseColumnCount + visibleFields.length}
-                        className="text-center text-muted-foreground"
-                      >
-                        No entities found.
+                {(payload?.items ?? []).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={technicalEnabled ? 7 : 6} className="text-center text-muted-foreground">
+                      No items found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  payload?.items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        {editingItemId === item.id ? (
+                          <Input
+                            className="h-8 max-w-[260px]"
+                            value={editDraft.canonical_name}
+                            onChange={(event) =>
+                              setEditDraft((current) => ({ ...current, canonical_name: event.target.value }))
+                            }
+                          />
+                        ) : (
+                          <div>
+                            <Link href={`/app/entities/${item.entity_id}`} className="font-medium">
+                              {item.name}
+                            </Link>
+                            {item.summary ? <p className="subtle text-xs">{item.summary}</p> : null}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editingItemId === item.id ? (
+                          <Input
+                            className="h-8 max-w-[180px]"
+                            value={editDraft.type_label}
+                            onChange={(event) =>
+                              setEditDraft((current) => ({ ...current, type_label: event.target.value }))
+                            }
+                          />
+                        ) : (
+                          item.type_label
+                        )}
+                      </TableCell>
+                      <TableCell>{formatTimestamp(item.last_seen_at)}</TableCell>
+                      <TableCell>{item.mention_count}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {item.key_properties.length === 0 ? <span className="subtle">No properties</span> : null}
+                          {item.key_properties.map((property) =>
+                            property.claim_index_id ? (
+                              <button
+                                key={`${item.id}-${property.property_key}`}
+                                type="button"
+                                className="tag"
+                                onClick={() =>
+                                  openExplain(
+                                    property.claim_index_id as number,
+                                    `${property.label}: ${property.value}`
+                                  )
+                                }
+                              >
+                                {property.label}: {property.value}
+                              </button>
+                            ) : (
+                              <span key={`${item.id}-${property.property_key}`} className="tag">
+                                {property.label}: {property.value}
+                              </span>
+                            )
+                          )}
+                        </div>
+                      </TableCell>
+                      {technicalEnabled ? (
+                        <TableCell>
+                          <p className="text-xs text-muted-foreground">item_id: {item.id}</p>
+                          <p className="text-xs text-muted-foreground">space_id: {item.space_id ?? "-"}</p>
+                          <p className="text-xs text-muted-foreground">page_id: {item.page_id ?? "-"}</p>
+                        </TableCell>
+                      ) : null}
+                      <TableCell>
+                        {editingItemId === item.id ? (
+                          <div className="inlineActions">
+                            <Button type="button" onClick={() => void saveEdit(item.id)} disabled={rowBusyId === item.id}>
+                              Save
+                            </Button>
+                            <Button type="button" variant="outline" onClick={cancelEdit}>
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="inlineActions">
+                            <Button type="button" variant="outline" onClick={() => beginEdit(item)}>
+                              Quick edit
+                            </Button>
+                            <Button asChild type="button" variant="outline">
+                              <Link href={`/app/entities/${item.entity_id}`}>Open</Link>
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    payload?.items.map((entity) => (
-                      <TableRow key={entity.id}>
-                        <TableCell>
-                          {editingEntityId === entity.id ? (
-                            <Input
-                              className="h-8"
-                              value={editDraft.canonical_name}
-                              onChange={(event) =>
-                                setEditDraft((current) => ({ ...current, canonical_name: event.target.value }))
-                              }
-                            />
-                          ) : (
-                            <Link href={`/app/entities/${entity.id}`}>{entity.canonical_name}</Link>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {editingEntityId === entity.id ? (
-                            <Input
-                              className="h-8"
-                              value={editDraft.type_label}
-                              onChange={(event) =>
-                                setEditDraft((current) => ({ ...current, type_label: event.target.value }))
-                              }
-                            />
-                          ) : (
-                            entity.type_label || "-"
-                          )}
-                        </TableCell>
-                        {isDevMode ? <TableCell>{entity.alias_count}</TableCell> : null}
-                        {isDevMode ? <TableCell>{formatTimestamp(entity.last_seen)}</TableCell> : null}
-                        {isDevMode ? <TableCell>{entity.conversation_count}</TableCell> : null}
-                        <TableCell>
-                          {editingEntityId === entity.id ? (
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                onClick={() =>
-                                  void saveEntityEdit(entity.id, entity.canonical_name, entity.type_label)
-                                }
-                                disabled={rowBusyId === entity.id}
-                              >
-                                Save
-                              </Button>
-                              <Button
-                                variant="outline"
-                                type="button"
-                                onClick={cancelEditEntity}
-                                disabled={rowBusyId === entity.id}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                type="button"
-                                onClick={() =>
-                                  beginEditEntity(entity.id, entity.canonical_name, entity.type_label)
-                                }
-                                disabled={rowBusyId === entity.id}
-                              >
-                                Edit
-                              </Button>
-                              <DeleteActionButton
-                                type="button"
-                                onClick={() => requestDeleteEntity(entity.id)}
-                                disabled={rowBusyId === entity.id}
-                              />
-                            </div>
-                          )}
-                        </TableCell>
-                        {visibleFields.map((field) => (
-                          <TableCell key={`${entity.id}-${field}`}>{entity.dynamic_fields[field] ?? "-"}</TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  )}
+                  ))
+                )}
               </TableBody>
             </Table>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <Button
-                variant="outline"
-                type="button"
-                disabled={!canPrev}
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-              >
-                Previous
-              </Button>
-              <span>
-                {total === 0 ? 0 : offset + 1} - {Math.min(total, offset + PAGE_SIZE)} of {total}
-              </span>
-              <Button variant="outline" type="button" disabled={!canNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
-                Next
-              </Button>
-            </div>
-          </>
-        )}
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <Button variant="outline" disabled={!canPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {total === 0 ? 0 : offset + 1} - {Math.min(total, offset + PAGE_SIZE)} of {total}
+            </span>
+            <Button variant="outline" disabled={!canNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
+              Next
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      <DeleteConfirmDialog
-        open={pendingDeleteEntityId !== null}
-        onOpenChange={(open) => (!open ? cancelDeleteEntity() : null)}
-        title="Delete entity"
-        description={
-          pendingDeleteEntity
-            ? `Delete "${pendingDeleteEntity.canonical_name}"? This action cannot be undone.`
-            : "Delete this entity? This action cannot be undone."
-        }
-        onConfirm={() => (pendingDeleteEntityId ? void confirmDeleteEntity(pendingDeleteEntityId) : null)}
-        isDeleting={pendingDeleteEntityId !== null && pendingDeleteEntityId === rowBusyId}
-        confirmLabel="Confirm delete"
-      />
+      <ExplainSidePanel open={explainOpen} target={explainTarget} onOpenChange={setExplainOpen} />
     </div>
   );
 }
-

@@ -47,20 +47,20 @@ const SIDEBAR_STORAGE_KEY = "librarian.shell.sidebarCollapsed.v1";
 const APP_ROUTES_TO_PREFETCH = [
   "/app",
   "/app/chat",
-  "/app/graph",
-  "/app/conversations",
+  "/app/spaces",
   "/app/entities",
-  "/app/schema",
-  "/app/search"
+  "/app/properties",
+  "/app/search",
+  "/app/graph"
 ];
 const ROUTE_MODULE_PRELOADERS: Array<() => Promise<unknown>> = [
   () => import("@/app/app/page"),
   () => import("@/app/app/chat/page"),
-  () => import("@/app/app/graph/page"),
-  () => import("@/app/app/conversations/page"),
+  () => import("@/app/app/spaces/page"),
   () => import("@/app/app/entities/page"),
-  () => import("@/app/app/schema/page"),
-  () => import("@/app/app/search/page")
+  () => import("@/app/app/properties/page"),
+  () => import("@/app/app/search/page"),
+  () => import("@/app/app/graph/page")
 ];
 
 function readSidebarPreference(): boolean {
@@ -153,7 +153,7 @@ function SettingsSheetButton() {
         </section>
 
         <section className="space-y-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Mode</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Advanced</h3>
           <div className="flex items-start gap-2 rounded-md border border-border/70 px-3 py-2">
             <Checkbox
               id="settings-dev-mode"
@@ -161,9 +161,9 @@ function SettingsSheetButton() {
               onCheckedChange={(checked) => setDevMode(Boolean(checked))}
             />
             <div className="space-y-0.5">
-              <Label htmlFor="settings-dev-mode">Dev mode</Label>
+              <Label htmlFor="settings-dev-mode">Show technical details</Label>
               <p className="text-xs text-muted-foreground">
-                On keeps all technical and provenance details visible.
+                Reveals raw IDs, payloads, and low-level provenance across pages.
               </p>
             </div>
           </div>
@@ -289,7 +289,7 @@ function AppShellFrame({
             </Badge>
           </Link>
           <p className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-            Structured memory from conversation, built for inspection.
+            Your productivity workspace for captured knowledge.
           </p>
         </SidebarHeader>
         <SidebarSeparator />
@@ -315,8 +315,8 @@ function AppShellFrame({
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-4" />
             <div className="leading-tight">
-              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Product Workspace</p>
-              <p className="text-sm font-medium">Browse, inspect, and shape learned knowledge.</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Workspace</p>
+              <p className="text-sm font-medium">Capture, organize, and explain what matters.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">

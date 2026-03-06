@@ -8,7 +8,6 @@ import {
   FolderKanban,
   LayoutDashboard,
   type LucideIcon,
-  MessagesSquare,
   Search,
   Shapes,
   UsersRound
@@ -26,12 +25,11 @@ import {
 const LINKS: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: "/app", label: "Overview", icon: LayoutDashboard },
   { href: "/app/chat", label: "Chat", icon: Bot },
-  { href: "/app/graph", label: "Graph", icon: ChartNetwork },
-  { href: "/app/pods", label: "Pods", icon: FolderKanban },
-  { href: "/app/conversations", label: "Conversations", icon: MessagesSquare },
-  { href: "/app/entities", label: "Entities", icon: UsersRound },
-  { href: "/app/schema", label: "Schema", icon: Shapes },
-  { href: "/app/search", label: "Search", icon: Search }
+  { href: "/app/spaces", label: "Spaces", icon: FolderKanban },
+  { href: "/app/entities", label: "Library", icon: UsersRound },
+  { href: "/app/properties", label: "Properties & Types", icon: Shapes },
+  { href: "/app/search", label: "Search", icon: Search },
+  { href: "/app/graph", label: "Graph", icon: ChartNetwork }
 ];
 
 function isActive(pathname: string, href: string): boolean {

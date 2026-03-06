@@ -31,6 +31,7 @@ from app.services.organization import (
     remove_collection_item,
     upsert_collection_item,
 )
+from app.services.experience_projection import rebuild_experience_projection
 
 router = APIRouter()
 
@@ -156,6 +157,7 @@ def add_collection_item(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Collection or entity not found")
+    rebuild_experience_projection(db, conversation_id=None, space_id=None)
     db.commit()
     return ApiResponse(data=result)
 
@@ -174,6 +176,7 @@ def delete_collection_item(
     removed = remove_collection_item(db, collection_id=collection_id, entity_id=entity_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Collection membership not found")
+    rebuild_experience_projection(db, conversation_id=None, space_id=None)
     db.commit()
     return ApiResponse(
         data=CollectionItemMutationResponse(collection_id=collection_id, entity_id=entity_id, added=False)

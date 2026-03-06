@@ -5,66 +5,67 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowRight, ChartNetwork, FolderKanban, MessageSquare, Search, Shapes, Users } from "lucide-react";
 
-import { useIsDevMode } from "@/components/AppSettingsProvider";
 import {
-  type ConversationsListResponse,
-  type RecentEntitiesResponse,
-  type SchemaOverviewData,
-  getConversations,
-  getRecentEntities,
-  getSchemaOverview
-} from "../../lib/api";
-import { formatTimestamp } from "../../lib/format";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { Input } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+  type LibraryItemsResponseV2,
+  type PropertyCatalogResponseV2,
+  type SpaceV2,
+  getLibraryItemsV2,
+  getPropertiesCatalogV2,
+  getSpacesV2
+} from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const ACTIONS = [
   {
     href: "/app/chat",
-    title: "Chat Workspace",
-    description: "Live turns, extraction controls, and pinned conversation rail.",
+    title: "Chat",
+    description: "Capture new context and let the workspace organize it.",
     icon: MessageSquare
   },
   {
-    href: "/app/graph",
-    title: "Graph Studio",
-    description: "Hover-preview and pin-edit graph inspector experience.",
-    icon: ChartNetwork
-  },
-  {
-    href: "/app/pods",
-    title: "Pods",
-    description: "Browse pod trees and scoped collection records.",
+    href: "/app/spaces",
+    title: "Spaces",
+    description: "Organize your workspace with pages and tables.",
     icon: FolderKanban
   },
   {
     href: "/app/entities",
-    title: "Entity Catalog",
-    description: "Global records with canonical names, relations, and timelines.",
+    title: "Library",
+    description: "Review entities, properties, and recent activity.",
     icon: Users
   },
   {
-    href: "/app/schema",
-    title: "Schema Explorer",
-    description: "Types, fields, proposals, and rationale in one place.",
+    href: "/app/properties",
+    title: "Properties & Types",
+    description: "Refine schema labels and relation vocabulary.",
     icon: Shapes
+  },
+  {
+    href: "/app/search",
+    title: "Search",
+    description: "Find items and claims across your workspace.",
+    icon: Search
+  },
+  {
+    href: "/app/graph",
+    title: "Graph",
+    description: "Explore connected knowledge in advanced view.",
+    icon: ChartNetwork
   }
 ];
 
 export default function WorkspacePage() {
   const router = useRouter();
-  const isDevMode = useIsDevMode();
-  const [searchDraft, setSearchDraft] = useState("");
+  const [queryDraft, setQueryDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [conversations, setConversations] = useState<ConversationsListResponse | null>(null);
-  const [recentEntities, setRecentEntities] = useState<RecentEntitiesResponse | null>(null);
-  const [schemaOverview, setSchemaOverview] = useState<SchemaOverviewData | null>(null);
+  const [spaces, setSpaces] = useState<SpaceV2[]>([]);
+  const [library, setLibrary] = useState<LibraryItemsResponseV2 | null>(null);
+  const [properties, setProperties] = useState<PropertyCatalogResponseV2 | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -72,22 +73,22 @@ export default function WorkspacePage() {
       setLoading(true);
       setError(null);
       try {
-        const [conversationData, recentEntityData, schemaData] = await Promise.all([
-          getConversations({ limit: 8, offset: 0 }),
-          getRecentEntities(8),
-          getSchemaOverview({ limit: 20, proposal_limit: 20 })
+        const [spaceRows, libraryRows, propertyRows] = await Promise.all([
+          getSpacesV2(),
+          getLibraryItemsV2({ limit: 8, offset: 0, sort: "last_active", order: "desc" }),
+          getPropertiesCatalogV2()
         ]);
         if (!active) {
           return;
         }
-        setConversations(conversationData);
-        setRecentEntities(recentEntityData);
-        setSchemaOverview(schemaData);
+        setSpaces(spaceRows);
+        setLibrary(libraryRows);
+        setProperties(propertyRows);
       } catch (err) {
         if (!active) {
           return;
         }
-        setError(err instanceof Error ? err.message : "Failed to load workspace data.");
+        setError(err instanceof Error ? err.message : "Failed to load workspace overview.");
       } finally {
         if (active) {
           setLoading(false);
@@ -102,7 +103,7 @@ export default function WorkspacePage() {
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const clean = searchDraft.trim();
+    const clean = queryDraft.trim();
     if (!clean) {
       return;
     }
@@ -113,38 +114,24 @@ export default function WorkspacePage() {
     <div className="space-y-4 routeFade">
       <Card className="hero overflow-hidden border-border/80 bg-card/95">
         <CardHeader className="space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
-              <Badge variant="secondary">Workspace Dashboard</Badge>
-              <CardTitle className="text-3xl tracking-tight">Inspect the system state at a glance.</CardTitle>
-              <CardDescription className="max-w-3xl text-sm sm:text-base">
-                Start with semantic search, then drill into conversations, entities, and schema changes with a
-                shared product shell.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button asChild>
-                <Link href="/app/chat">New Chat</Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/app/graph">Open Graph</Link>
-              </Button>
-            </div>
+          <div className="space-y-2">
+            <Badge variant="secondary">Workspace</Badge>
+            <CardTitle className="text-3xl tracking-tight">Your productivity space for captured knowledge.</CardTitle>
+            <CardDescription className="max-w-3xl text-sm sm:text-base">
+              Organize information into spaces, review key items in your library, and open explainability when needed.
+            </CardDescription>
           </div>
           <form className="flex flex-col gap-2 sm:flex-row sm:items-center" onSubmit={submitSearch}>
             <Input
-              placeholder="Search entities and facts..."
-              value={searchDraft}
-              onChange={(event) => setSearchDraft(event.target.value)}
+              placeholder="Search items or claims..."
+              value={queryDraft}
+              onChange={(event) => setQueryDraft(event.target.value)}
               className="sm:max-w-xl"
             />
-            <Button type="submit">
-              <Search className="h-4 w-4" />
-              Search
-            </Button>
+            <Button type="submit">Search</Button>
           </form>
         </CardHeader>
-        <CardContent className="grid gap-3 pb-6 sm:grid-cols-2 xl:grid-cols-4">
+        <CardContent className="grid gap-3 pb-6 sm:grid-cols-2 xl:grid-cols-3">
           {ACTIONS.map((action) => {
             const Icon = action.icon;
             return (
@@ -172,192 +159,39 @@ export default function WorkspacePage() {
       ) : null}
 
       {loading ? (
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Card key={index}>
-                <CardHeader className="pb-2">
-                  <Skeleton className="h-4 w-28" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-8 w-20" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <Card>
-            <CardContent className="py-6">
-              <Skeleton className="h-56 w-full" />
-            </CardContent>
-          </Card>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-20" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-1">
-                <CardDescription>Conversations</CardDescription>
-                <CardTitle className="text-3xl">{conversations?.total ?? 0}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-1">
-                <CardDescription>Recent Entities</CardDescription>
-                <CardTitle className="text-3xl">{recentEntities?.items.length ?? 0}</CardTitle>
-              </CardHeader>
-            </Card>
-            {isDevMode ? (
-              <>
-                <Card>
-                  <CardHeader className="pb-1">
-                    <CardDescription>Schema Fields</CardDescription>
-                    <CardTitle className="text-3xl">{schemaOverview?.fields.length ?? 0}</CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-1">
-                    <CardDescription>Open Proposals</CardDescription>
-                    <CardTitle className="text-3xl">
-                      {schemaOverview?.proposals.filter((proposal) => proposal.status === "proposed").length ?? 0}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
-              </>
-            ) : null}
-          </div>
-
-          <Tabs defaultValue="conversations" className="space-y-3">
-            <TabsList>
-              <TabsTrigger value="conversations">Conversations</TabsTrigger>
-              <TabsTrigger value="entities">Entities</TabsTrigger>
-              {isDevMode ? <TabsTrigger value="schema">Schema</TabsTrigger> : null}
-            </TabsList>
-
-            <TabsContent value="conversations">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl">Recent Conversations</CardTitle>
-                    <CardDescription>Latest activity and extracted counts.</CardDescription>
-                  </div>
-                  <Button asChild variant="outline" size="sm">
-                    <Link href="/app/conversations">View all</Link>
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Conversation</TableHead>
-                        <TableHead>Updated</TableHead>
-                        <TableHead>Entities</TableHead>
-                        <TableHead>Facts</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(conversations?.items ?? []).length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={4} className="text-muted-foreground">
-                            No conversations yet.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        conversations?.items.map((item) => (
-                          <TableRow key={item.conversation_id}>
-                            <TableCell>
-                              <Link href={`/app/conversations/${encodeURIComponent(item.conversation_id)}`}>
-                                {item.conversation_id}
-                              </Link>
-                            </TableCell>
-                            <TableCell>{formatTimestamp(item.last_message_at)}</TableCell>
-                            <TableCell>{item.entity_count}</TableCell>
-                            <TableCell>{item.fact_count}</TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="entities">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl">Recently Updated Entities</CardTitle>
-                    <CardDescription>Canonical names and current type labels.</CardDescription>
-                  </div>
-                  <Button asChild variant="outline" size="sm">
-                    <Link href="/app/entities">Open catalog</Link>
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2 text-sm">
-                    {(recentEntities?.items ?? []).length === 0 ? (
-                      <li className="text-muted-foreground">No entities yet.</li>
-                    ) : (
-                      recentEntities?.items.map((entity) => (
-                        <li key={entity.entity_id}>
-                          <Link href={`/app/entities/${entity.entity_id}`} className="font-medium">
-                            {entity.canonical_name}
-                          </Link>
-                          <span className="ml-1 text-muted-foreground">({entity.type_label || "untyped"})</span>
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {isDevMode ? (
-              <TabsContent value="schema">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="text-xl">Recent Schema Changes</CardTitle>
-                      <CardDescription>Proposal stream with confidence and timestamps.</CardDescription>
-                    </div>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href="/app/schema">Open schema explorer</Link>
-                    </Button>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Confidence</TableHead>
-                          <TableHead>Created</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(schemaOverview?.proposals ?? []).length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={4} className="text-muted-foreground">
-                              No schema proposals yet.
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          schemaOverview?.proposals.slice(0, 12).map((proposal) => (
-                            <TableRow key={proposal.id}>
-                              <TableCell>{proposal.proposal_type}</TableCell>
-                              <TableCell>{proposal.status}</TableCell>
-                              <TableCell>{proposal.confidence.toFixed(2)}</TableCell>
-                              <TableCell>{formatTimestamp(proposal.created_at)}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            ) : null}
-          </Tabs>
-        </>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-1">
+              <CardDescription>Spaces</CardDescription>
+              <CardTitle className="text-3xl">{spaces.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-1">
+              <CardDescription>Library Items</CardDescription>
+              <CardTitle className="text-3xl">{library?.total ?? 0}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-1">
+              <CardDescription>Properties</CardDescription>
+              <CardTitle className="text-3xl">{properties?.total ?? 0}</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
       )}
     </div>
   );

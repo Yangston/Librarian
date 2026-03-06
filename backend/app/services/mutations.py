@@ -45,6 +45,7 @@ from app.schemas.mutations import (
     SchemaRelationUpdateRequest,
 )
 from app.schemas.relation import RelationRead, RelationWithEntitiesRead
+from app.services.experience_projection import rebuild_experience_projection
 from app.services.extraction import run_extraction_for_conversation
 from app.services.organization import rebuild_pod_themes
 
@@ -59,7 +60,7 @@ def update_message(db: Session, message_id: int, payload: MessageUpdateRequest) 
         message.role = payload.role
     if payload.content is not None:
         message.content = payload.content.strip()
-    db.commit()
+    _commit_with_projection(db)
     db.refresh(message)
     return message
 
@@ -93,7 +94,7 @@ def delete_message(db: Session, message_id: int) -> bool:
         )
 
     _rebuild_global_derived_state(db)
-    db.commit()
+    _commit_with_projection(db)
     return True
 
 
@@ -111,7 +112,7 @@ def delete_conversation(db: Session, conversation_id: str) -> bool:
     _clear_conversation_derived_state(db, clean_conversation_id, clear_messages=True)
     db.execute(delete(Conversation).where(Conversation.conversation_id == clean_conversation_id))
     _rebuild_global_derived_state(db)
-    db.commit()
+    _commit_with_projection(db)
     return True
 
 
@@ -145,7 +146,7 @@ def update_entity(db: Session, entity_id: int, payload: EntityUpdateRequest) -> 
     if payload.tags_json is not None:
         entity.tags_json = _clean_string_list(payload.tags_json)
 
-    db.commit()
+    _commit_with_projection(db)
     db.refresh(entity)
     return EntityRead.model_validate(entity)
 
@@ -177,7 +178,7 @@ def delete_entity(db: Session, entity_id: int) -> bool:
     )
     db.execute(update(Entity).where(Entity.merged_into_id == entity_id).values(merged_into_id=None))
     db.delete(entity)
-    db.commit()
+    _commit_with_projection(db)
     return True
 
 
@@ -201,7 +202,7 @@ def update_fact(db: Session, fact_id: int, payload: FactUpdateRequest) -> FactWi
     if payload.confidence is not None:
         fact.confidence = payload.confidence
 
-    db.commit()
+    _commit_with_projection(db)
     db.refresh(fact)
     return _fact_with_subject(db, fact)
 
@@ -213,7 +214,7 @@ def delete_fact(db: Session, fact_id: int) -> bool:
     if fact is None:
         return False
     db.delete(fact)
-    db.commit()
+    _commit_with_projection(db)
     return True
 
 
@@ -247,7 +248,7 @@ def update_relation(
     if payload.qualifiers_json is not None:
         relation.qualifiers_json = payload.qualifiers_json
 
-    db.commit()
+    _commit_with_projection(db)
     db.refresh(relation)
     return _relation_with_entities(db, relation.id)
 
@@ -259,7 +260,7 @@ def delete_relation(db: Session, relation_id: int) -> bool:
     if relation is None:
         return False
     db.delete(relation)
-    db.commit()
+    _commit_with_projection(db)
     return True
 
 
@@ -279,7 +280,7 @@ def update_schema_node(
         row.description = payload.description.strip() or None
     if payload.examples_json is not None:
         row.examples_json = _clean_string_list(payload.examples_json)
-    db.commit()
+    _commit_with_projection(db)
     db.refresh(row)
     return SchemaNodeMutationRead.model_validate(row)
 
@@ -291,7 +292,7 @@ def delete_schema_node(db: Session, schema_node_id: int) -> bool:
     if row is None:
         return False
     db.delete(row)
-    db.commit()
+    _commit_with_projection(db)
     return True
 
 
@@ -316,7 +317,7 @@ def update_schema_field(
         if canonical is None:
             return None
         row.canonical_of_id = payload.canonical_of_id
-    db.commit()
+    _commit_with_projection(db)
     db.refresh(row)
     return SchemaFieldMutationRead.model_validate(row)
 
@@ -328,7 +329,7 @@ def delete_schema_field(db: Session, schema_field_id: int) -> bool:
     if row is None:
         return False
     db.delete(row)
-    db.commit()
+    _commit_with_projection(db)
     return True
 
 
@@ -353,7 +354,7 @@ def update_schema_relation(
         if canonical is None:
             return None
         row.canonical_of_id = payload.canonical_of_id
-    db.commit()
+    _commit_with_projection(db)
     db.refresh(row)
     return SchemaRelationMutationRead.model_validate(row)
 
@@ -365,7 +366,7 @@ def delete_schema_relation(db: Session, schema_relation_id: int) -> bool:
     if row is None:
         return False
     db.delete(row)
-    db.commit()
+    _commit_with_projection(db)
     return True
 
 
@@ -808,3 +809,9 @@ class _ReplayExtractor(ExtractorInterface):
 
     def extract(self, messages: list[Message]) -> ExtractionResult:
         return self._result
+
+
+def _commit_with_projection(db: Session) -> None:
+    rebuild_experience_projection(db, conversation_id=None, space_id=None)
+    db.commit()
+

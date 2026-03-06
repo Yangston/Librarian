@@ -18,7 +18,7 @@ const APP_SETTINGS_STORAGE_VERSION = 1;
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: "system",
-  devMode: true,
+  devMode: false,
   density: "comfortable",
   reducedMotion: false
 };

@@ -223,11 +223,11 @@ export default function SearchPage() {
               <Badge variant="secondary">Semantic Search</Badge>
               <CardTitle className="text-2xl tracking-tight">Search entities, facts, and provenance trails.</CardTitle>
               <CardDescription>
-                Apply conversation, type, and date filters to quickly isolate relevant knowledge.
+                Apply conversation, type, and workspace filters to isolate relevant knowledge.
               </CardDescription>
             </div>
             <Button asChild variant="outline">
-              <Link href="/app/entities">Browse Entities</Link>
+              <Link href="/app/entities">Browse Library</Link>
             </Button>
           </div>
           <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-8" onSubmit={handleSubmit}>
@@ -259,11 +259,11 @@ export default function SearchPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="search-pod">Pod</Label>
+              <Label htmlFor="search-pod">Space</Label>
               <Input
                 id="search-pod"
                 list="search-pod-list"
-                placeholder="pod id"
+                placeholder="space id"
                 value={podScope}
                 onChange={(event) => setPodScope(event.target.value)}
               />
@@ -276,11 +276,11 @@ export default function SearchPage() {
               </datalist>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="search-collection">Collection</Label>
+              <Label htmlFor="search-collection">Page</Label>
               <Input
                 id="search-collection"
                 list="search-collection-list"
-                placeholder="collection id"
+                placeholder="page id"
                 value={collectionScope}
                 onChange={(event) => setCollectionScope(event.target.value)}
               />
@@ -340,8 +340,8 @@ export default function SearchPage() {
               </Badge>
               <Badge variant="outline">Conversation: {result.conversation_id ?? "-"}</Badge>
               <Badge variant="outline">Type: {result.type_label ?? "-"}</Badge>
-              <Badge variant="outline">Pod: {result.pod_id ?? "-"}</Badge>
-              <Badge variant="outline">Collection: {result.collection_id ?? "-"}</Badge>
+              <Badge variant="outline">Space: {result.pod_id ?? "-"}</Badge>
+              <Badge variant="outline">Page: {result.collection_id ?? "-"}</Badge>
               <Badge variant="outline">From: {formatTimestamp(result.start_time)}</Badge>
               <Badge variant="outline">To: {formatTimestamp(result.end_time)}</Badge>
             </CardContent>

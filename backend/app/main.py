@@ -21,6 +21,7 @@ from app.routers import (
     schema,
     search,
     workspace,
+    workspace_v2,
 )
 from app.services.workspace import (
     get_schema_overview,
@@ -80,6 +81,7 @@ app.include_router(explain.router, tags=["explain"])
 app.include_router(explain.global_router, tags=["explain"])
 app.include_router(search.router, tags=["search"])
 app.include_router(workspace.router, tags=["workspace"])
+app.include_router(workspace_v2.router, tags=["workspace-v2"])
 app.include_router(knowledge.router, tags=["knowledge"])
 app.include_router(mutations.router, tags=["mutations"])
 app.include_router(organization.router, tags=["organization"])

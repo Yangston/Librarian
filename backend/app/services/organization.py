@@ -37,6 +37,7 @@ from app.schemas.organization import (
     ScopedGraphNode,
     ScopeMode,
 )
+from app.services.experience_projection import rebuild_experience_projection
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,7 @@ def create_pod(db: Session, *, name: str, description: str | None = None) -> Pod
         is_default=False,
     )
     db.add(pod)
+    rebuild_experience_projection(db, conversation_id=None, space_id=None)
     db.commit()
     db.refresh(pod)
     return PodRead.model_validate(pod)
@@ -172,6 +174,7 @@ def delete_pod_with_conversations(db: Session, *, pod_id: int) -> PodDeleteRespo
         )
     )
     db.delete(pod)
+    rebuild_experience_projection(db, conversation_id=None, space_id=None)
     db.commit()
     return PodDeleteResponse(
         pod_id=pod_id,
