@@ -1,16 +1,29 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { useAppSettings } from "@/components/AppSettingsProvider";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   acceptWorkspaceCollectionSuggestionsV3,
-  createWorkspaceSpaceV3,
   createWorkspaceCollectionV3,
   createWorkspaceColumnV3,
   createWorkspaceRowV3,
+  createWorkspaceSpaceV3,
   deleteWorkspaceCollectionV3,
   deleteWorkspaceColumnV3,
   deleteWorkspaceRowV3,
@@ -21,23 +34,24 @@ import {
   getWorkspaceOverviewV3,
   getWorkspaceRowsV3,
   getWorkspaceSpacesV3,
+  rejectWorkspaceCollectionSuggestionsV3,
+  updateWorkspaceCellV3,
+  updateWorkspaceCollectionV3,
+  updateWorkspaceColumnV3,
+  updateWorkspaceRowV3,
+  updateWorkspaceSpaceV3,
   type WorkspaceCatalogRow,
   type WorkspaceCollectionRead,
   type WorkspaceOverviewResponse,
   type WorkspaceRowsResponse,
-  type WorkspaceSpaceRead,
-  rejectWorkspaceCollectionSuggestionsV3,
-  updateWorkspaceSpaceV3,
-  updateWorkspaceCellV3,
-  updateWorkspaceCollectionV3,
-  updateWorkspaceColumnV3,
-  updateWorkspaceRowV3
+  type WorkspaceSpaceRead
 } from "@/lib/api";
-import { formatTimestamp } from "@/lib/format";
 import { useWorkspaceEnrichmentMonitor } from "@/lib/use-workspace-enrichment-monitor";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
+import { WorkspaceCollectionCanvas } from "./WorkspaceCollectionCanvas";
+import { WorkspaceInspector, type WorkspaceInspectorMode } from "./WorkspaceInspector";
+import { WorkspaceNavigationRail } from "./WorkspaceNavigationRail";
 
 type WorkspaceShellProps = {
   spaceSlug: string;
@@ -46,7 +60,9 @@ type WorkspaceShellProps = {
 
 export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProps) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const { settings } = useAppSettings();
+
   const [spaces, setSpaces] = useState<WorkspaceSpaceRead[]>([]);
   const [overview, setOverview] = useState<WorkspaceOverviewResponse | null>(null);
   const [rowsPayload, setRowsPayload] = useState<WorkspaceRowsResponse | null>(null);
@@ -57,7 +73,17 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
   const [newSpace, setNewSpace] = useState({ name: "", description: "" });
   const [newCollection, setNewCollection] = useState({ name: "", description: "" });
   const [newColumn, setNewColumn] = useState({ label: "", data_type: "text" });
-  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
+  const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [quickFilter, setQuickFilter] = useState("");
+  const [inspectorMode, setInspectorMode] = useState<WorkspaceInspectorMode>("table");
+  const [inspectorVisible, setInspectorVisible] = useState(true);
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
+  const [createSpaceOpen, setCreateSpaceOpen] = useState(false);
+  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
+  const [addRowOpen, setAddRowOpen] = useState(false);
+
+  const deferredQuickFilter = useDeferredValue(quickFilter);
 
   const selectedSpace = useMemo(
     () => spaces.find((space) => space.slug === spaceSlug) ?? null,
@@ -114,6 +140,7 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
 
   useEffect(() => {
     let active = true;
+
     async function load() {
       setLoading(true);
       setError(null);
@@ -157,6 +184,7 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
         }
       }
     }
+
     void load();
     return () => {
       active = false;
@@ -167,10 +195,48 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
     void loadRows(selectedCollection);
   }, [selectedCollection?.id]);
 
+  useEffect(() => {
+    setQuickFilter("");
+    setSelectedEntityId("");
+    if (!selectedCollection) {
+      setInspectorMode("space");
+    } else if (inspectorMode === "space") {
+      setInspectorMode("table");
+    }
+  }, [selectedCollection?.id]);
+
+  useEffect(() => {
+    if (isMobile) {
+      setInspectorVisible(false);
+      setInspectorSheetOpen(false);
+      setRailCollapsed(false);
+    }
+  }, [isMobile]);
+
   const addableEntities = useMemo(() => {
     const existingEntityIds = new Set((rowsPayload?.rows ?? []).map((row) => row.entity_id));
     return library.filter((item) => !existingEntityIds.has(item.row.entity_id));
   }, [library, rowsPayload?.rows]);
+
+  const filteredRows = useMemo(() => {
+    const query = deferredQuickFilter.trim().toLowerCase();
+    const rows = rowsPayload?.rows ?? [];
+    if (!query) {
+      return rows;
+    }
+
+    return rows.filter((row) => {
+      const haystack = [
+        row.title,
+        row.summary ?? "",
+        row.detail_blurb ?? "",
+        ...row.cells.map((cell) => `${cell.label} ${cell.display_value ?? ""}`)
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [deferredQuickFilter, rowsPayload?.rows]);
 
   async function handleCreateCollection() {
     if (!selectedSpace || !newCollection.name.trim()) {
@@ -183,6 +249,7 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
         description: newCollection.description.trim() || null
       });
       setNewCollection({ name: "", description: "" });
+      setCreateCollectionOpen(false);
       await loadOverview(selectedSpace);
       router.push(`/app/spaces/${selectedSpace.slug}/${created.slug}`);
     } catch (err) {
@@ -201,6 +268,7 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
         description: newSpace.description.trim() || null
       });
       setNewSpace({ name: "", description: "" });
+      setCreateSpaceOpen(false);
       router.push(`/app/spaces/${created.slug}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create space.");
@@ -213,7 +281,7 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
     }
     setError(null);
     try {
-      await updateWorkspaceSpaceV3(spaceId, {
+      const updated = await updateWorkspaceSpaceV3(spaceId, {
         name: payload.name?.trim(),
         description: payload.description ?? undefined
       });
@@ -221,6 +289,11 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
       setSpaces(spacesData);
       if (selectedSpace?.id === spaceId) {
         await loadOverview(spacesData.find((item) => item.id === spaceId) ?? null);
+        if (updated.slug !== spaceSlug) {
+          router.replace(
+            selectedCollection ? `/app/spaces/${updated.slug}/${selectedCollection.slug}` : `/app/spaces/${updated.slug}`
+          );
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update space.");
@@ -247,16 +320,22 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
     }
   }
 
-  async function handleRenameCollection(collectionId: number, name: string) {
-    if (!name.trim()) {
+  async function handleUpdateCollection(collectionId: number, payload: { name?: string; description?: string | null }) {
+    if (payload.name !== undefined && !payload.name.trim()) {
       return;
     }
     setError(null);
     try {
-      await updateWorkspaceCollectionV3(collectionId, { name: name.trim() });
+      const updated = await updateWorkspaceCollectionV3(collectionId, {
+        name: payload.name?.trim(),
+        description: payload.description ?? undefined
+      });
       await loadOverview();
+      if (selectedCollection?.id === collectionId && updated.slug !== collectionSlug) {
+        router.replace(`/app/spaces/${spaceSlug}/${updated.slug}`);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to rename collection.");
+      setError(err instanceof Error ? err.message : "Failed to update collection.");
     }
   }
 
@@ -351,6 +430,7 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
         entity_id: Number.parseInt(selectedEntityId, 10)
       });
       setSelectedEntityId("");
+      setAddRowOpen(false);
       await loadRows(selectedCollection);
       router.push(`/app/spaces/${spaceSlug}/${selectedCollection.slug}/${created.id}`);
     } catch (err) {
@@ -448,377 +528,208 @@ export function WorkspaceShell({ spaceSlug, collectionSlug }: WorkspaceShellProp
     }
   }
 
+  function openInspector(mode: WorkspaceInspectorMode) {
+    setInspectorMode(mode);
+    if (isMobile) {
+      setInspectorSheetOpen(true);
+    } else {
+      setInspectorVisible(true);
+    }
+  }
+
   const hasActiveCollectionRun =
     collectionEnrichment.run?.status === "queued" || collectionEnrichment.run?.status === "running";
 
+  const inspectorContent = (
+    <WorkspaceInspector
+      mode={inspectorMode}
+      onModeChange={setInspectorMode}
+      selectedSpace={selectedSpace}
+      selectedCollection={selectedCollection}
+      rowsPayload={rowsPayload}
+      newColumn={newColumn}
+      onNewColumnChange={setNewColumn}
+      onCreateColumn={() => void handleCreateColumn()}
+      onUpdateSpace={(spaceId, payload) => void handleUpdateSpace(spaceId, payload)}
+      onDeleteSpace={(spaceId, slug, name) => void handleDeleteSpace(spaceId, slug, name)}
+      onUpdateCollection={(collectionId, payload) => void handleUpdateCollection(collectionId, payload)}
+      onDeleteCollection={(collectionId) => void handleDeleteCollection(collectionId)}
+      onRenameColumn={(columnId, label) => void handleRenameColumn(columnId, label)}
+      onDeleteColumn={(columnId) => void handleDeleteColumn(columnId)}
+      onMoveColumn={(columnId, direction) => void handleMoveColumn(columnId, direction)}
+      statusMessage={collectionEnrichment.statusMessage}
+    />
+  );
+
   return (
-    <div className="stackLg routeFade">
+    <div className="stackLg">
       {error ? (
         <Card className="border-destructive/35 bg-destructive/5">
           <CardContent className="py-4 text-destructive">{error}</CardContent>
         </Card>
       ) : null}
 
-      <section className="grid gap-3 xl:grid-cols-[220px_260px_minmax(0,1fr)]">
-        <Card className="border-border/80 bg-card/95">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Spaces</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loading ? <p className="subtle">Loading spaces...</p> : null}
-            <div className="grid gap-2 rounded-lg border border-border/70 p-3">
-              <Input
-                placeholder="New space name"
-                value={newSpace.name}
-                onChange={(event) => setNewSpace((current) => ({ ...current, name: event.target.value }))}
-              />
-              <Input
-                placeholder="Description"
-                value={newSpace.description}
-                onChange={(event) => setNewSpace((current) => ({ ...current, description: event.target.value }))}
-              />
-              <Button type="button" variant="outline" onClick={() => void handleCreateSpace()}>
-                Create space
+      <div
+        className={cn(
+          "spacesLayout",
+          !isMobile && !inspectorVisible && "spacesLayoutInspectorHidden",
+          !isMobile && railCollapsed && "spacesLayoutRailCollapsed"
+        )}
+      >
+        <WorkspaceNavigationRail
+          loading={loading}
+          spaces={spaces}
+          collections={overview?.collections ?? []}
+          selectedSpace={selectedSpace}
+          selectedCollection={selectedCollection}
+          collapsed={railCollapsed}
+          onToggleCollapse={() => setRailCollapsed((current) => !current)}
+          isMobile={isMobile}
+          onOpenCreateSpace={() => setCreateSpaceOpen(true)}
+          onOpenCreateCollection={() => setCreateCollectionOpen(true)}
+        />
+
+        <WorkspaceCollectionCanvas
+          spaceSlug={spaceSlug}
+          selectedSpace={selectedSpace}
+          selectedCollection={selectedCollection}
+          rowsPayload={rowsPayload}
+          filteredRows={filteredRows}
+          loadingRows={loadingRows}
+          quickFilter={quickFilter}
+          onQuickFilterChange={setQuickFilter}
+          onOpenAddRow={() => setAddRowOpen(true)}
+          onOpenSchema={() => openInspector("schema")}
+          onOpenManageTable={() => openInspector(selectedCollection ? "table" : "space")}
+          onToggleInspector={() => setInspectorVisible((current) => !current)}
+          onRefreshEnrichment={() => void handleEnrichCollection()}
+          onRefreshStatus={() => void collectionEnrichment.refreshStatus()}
+          onAcceptSuggestions={() => void handleAcceptSuggestions()}
+          onRejectSuggestions={() => void handleRejectSuggestions()}
+          onDeleteRow={(rowId) => void handleDeleteRow(rowId)}
+          onMoveRow={(rowId, direction) => void handleMoveRow(rowId, direction)}
+          onUpdateCell={(rowId, columnId, value) => void handleUpdateCell(rowId, columnId, value)}
+          hasActiveCollectionRun={hasActiveCollectionRun}
+          statusMessage={collectionEnrichment.statusMessage}
+          isStartingRun={collectionEnrichment.isStartingRun}
+          inspectorVisible={inspectorVisible}
+          isMobile={isMobile}
+        />
+
+        {!isMobile && inspectorVisible ? <aside className="rowDetailInspector">{inspectorContent}</aside> : null}
+      </div>
+
+      <Sheet open={createSpaceOpen} onOpenChange={setCreateSpaceOpen}>
+        <SheetContent side="right" className="w-[92vw] space-y-5 overflow-y-auto sm:max-w-[420px]">
+          <SheetHeader>
+            <SheetTitle>Create space</SheetTitle>
+            <SheetDescription>Start a new focused container for related tables and work.</SheetDescription>
+          </SheetHeader>
+          <div className="grid gap-3">
+            <Input
+              placeholder="Space name"
+              value={newSpace.name}
+              onChange={(event) => setNewSpace((current) => ({ ...current, name: event.target.value }))}
+            />
+            <Textarea
+              rows={4}
+              placeholder="Description"
+              value={newSpace.description}
+              onChange={(event) => setNewSpace((current) => ({ ...current, description: event.target.value }))}
+            />
+          </div>
+          <SheetFooter>
+            <SheetClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
               </Button>
-            </div>
-            {spaces.map((space) => (
-              <div key={space.id} className="rounded-lg border border-border/70 p-2">
-                <Link
-                  href={`/app/spaces/${space.slug}`}
-                  className={`treeNodeButton ${space.slug === spaceSlug ? "active" : ""}`}
-                >
-                  <span>{space.name}</span>
-                  <span className="muted">{space.row_count}</span>
-                </Link>
-                {space.slug === spaceSlug ? (
-                  <div className="mt-2 grid gap-2">
-                    <Input
-                      defaultValue={space.name}
-                      className="h-8"
-                      onBlur={(event) => void handleUpdateSpace(space.id, { name: event.target.value })}
-                    />
-                    <Input
-                      defaultValue={space.description ?? ""}
-                      className="h-8"
-                      placeholder="Space description"
-                      onBlur={(event) =>
-                        void handleUpdateSpace(space.id, { description: event.target.value || null })
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      className="h-8"
-                      onClick={() => void handleDeleteSpace(space.id, space.slug, space.name)}
-                    >
-                      Delete space
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+            </SheetClose>
+            <Button type="button" onClick={() => void handleCreateSpace()}>
+              Create space
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
-        <Card className="border-border/80 bg-card/95">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Tables</CardTitle>
-            <CardDescription>
-              {selectedSpace ? `${selectedSpace.name} workspace` : "Select a space"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-2">
-              <Input
-                placeholder="New table name"
-                value={newCollection.name}
-                onChange={(event) => setNewCollection((current) => ({ ...current, name: event.target.value }))}
-              />
-              <Input
-                placeholder="Description"
-                value={newCollection.description}
-                onChange={(event) =>
-                  setNewCollection((current) => ({ ...current, description: event.target.value }))
-                }
-              />
-              <Button type="button" onClick={() => void handleCreateCollection()} disabled={!selectedSpace}>
-                Create table
+      <Sheet open={createCollectionOpen} onOpenChange={setCreateCollectionOpen}>
+        <SheetContent side="right" className="w-[92vw] space-y-5 overflow-y-auto sm:max-w-[420px]">
+          <SheetHeader>
+            <SheetTitle>Create table</SheetTitle>
+            <SheetDescription>
+              Add a new table to {selectedSpace?.name ?? "the current space"} without cluttering the main view.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="grid gap-3">
+            <Input
+              placeholder="Table name"
+              value={newCollection.name}
+              onChange={(event) => setNewCollection((current) => ({ ...current, name: event.target.value }))}
+            />
+            <Textarea
+              rows={4}
+              placeholder="Description"
+              value={newCollection.description}
+              onChange={(event) => setNewCollection((current) => ({ ...current, description: event.target.value }))}
+            />
+          </div>
+          <SheetFooter>
+            <SheetClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
               </Button>
-            </div>
+            </SheetClose>
+            <Button type="button" onClick={() => void handleCreateCollection()} disabled={!selectedSpace}>
+              Create table
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
-            {(overview?.collections ?? []).map((collection) => (
-              <Link
-                key={collection.id}
-                href={`/app/spaces/${spaceSlug}/${collection.slug}`}
-                className={`treeNodeButton ${selectedCollection?.id === collection.id ? "active" : ""}`}
-              >
-                <span>{collection.name}</span>
-                <span className="muted">
-                  {collection.row_count}
-                  {collection.pending_suggestion_count > 0 ? ` • ${collection.pending_suggestion_count} pending` : ""}
-                </span>
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/80 bg-card/95">
-          <CardHeader className="pb-2">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle className="text-xl">Workspace</CardTitle>
-                <CardDescription>
-                  {selectedCollection ? `${selectedCollection.name} table` : "Select a table"}
-                </CardDescription>
-              </div>
-              {selectedCollection ? (
-                <div className="flex items-center gap-2">
-                  {selectedCollection.pending_suggestion_count > 0 ? (
-                    <span className="tag border-amber-300 bg-amber-100 text-amber-900">
-                      {selectedCollection.pending_suggestion_count} pending
-                    </span>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void handleEnrichCollection()}
-                    disabled={collectionEnrichment.isStartingRun || hasActiveCollectionRun}
-                  >
-                    {collectionEnrichment.isStartingRun ? "Starting..." : "Refresh enrichment"}
-                  </Button>
-                  {hasActiveCollectionRun ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void collectionEnrichment.refreshStatus()}
-                      disabled={collectionEnrichment.isStartingRun}
-                    >
-                      Refresh status
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            {collectionEnrichment.statusMessage ? (
-              <p className="text-xs text-muted-foreground">{collectionEnrichment.statusMessage}</p>
+      <Sheet open={addRowOpen} onOpenChange={setAddRowOpen}>
+        <SheetContent side="right" className="w-[92vw] space-y-5 overflow-y-auto sm:max-w-[420px]">
+          <SheetHeader>
+            <SheetTitle>Add row</SheetTitle>
+            <SheetDescription>Add an existing library row into the active table.</SheetDescription>
+          </SheetHeader>
+          <div className="grid gap-3">
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={selectedEntityId}
+              onChange={(event) => setSelectedEntityId(event.target.value)}
+            >
+              <option value="">Select an existing row...</option>
+              {addableEntities.map((item) => (
+                <option key={item.row.entity_id} value={item.row.entity_id}>
+                  {item.row.title} ({item.collection_name})
+                </option>
+              ))}
+            </select>
+            {addableEntities.length === 0 ? (
+              <p className="subtle text-sm">No additional library rows are available for this table.</p>
             ) : null}
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {selectedCollection ? (
-              <>
-                {rowsPayload && rowsPayload.pending_suggestion_count > 0 ? (
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm">
-                    <span className="font-medium text-amber-900">
-                      {rowsPayload.pending_suggestion_count} pending suggestions
-                    </span>
-                    <Button type="button" variant="outline" className="h-8" onClick={() => void handleAcceptSuggestions()}>
-                      Accept all suggestions
-                    </Button>
-                    <Button type="button" variant="outline" className="h-8" onClick={() => void handleRejectSuggestions()}>
-                      Reject all suggestions
-                    </Button>
-                  </div>
-                ) : null}
+          </div>
+          <SheetFooter>
+            <SheetClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </SheetClose>
+            <Button type="button" onClick={() => void handleCreateRow()} disabled={!selectedEntityId}>
+              Add row
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                  <Input
-                    defaultValue={selectedCollection.name}
-                    onBlur={(event) => void handleRenameCollection(selectedCollection.id, event.target.value)}
-                  />
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs text-muted-foreground">
-                      {selectedCollection.row_count} rows • updated {formatTimestamp(selectedCollection.updated_at)}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      className="h-8"
-                      onClick={() => void handleDeleteCollection(selectedCollection.id)}
-                    >
-                      Delete table
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_140px_auto]">
-                  <Input
-                    placeholder="New column"
-                    value={newColumn.label}
-                    onChange={(event) => setNewColumn((current) => ({ ...current, label: event.target.value }))}
-                  />
-                  <select
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={newColumn.data_type}
-                    onChange={(event) =>
-                      setNewColumn((current) => ({ ...current, data_type: event.target.value }))
-                    }
-                  >
-                    <option value="text">Text</option>
-                    <option value="url">URL</option>
-                    <option value="number">Number</option>
-                  </select>
-                  <Button type="button" variant="outline" onClick={() => void handleCreateColumn()}>
-                    Add column
-                  </Button>
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                  <select
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={selectedEntityId}
-                    onChange={(event) => setSelectedEntityId(event.target.value)}
-                  >
-                    <option value="">Add existing space row...</option>
-                    {addableEntities.map((item) => (
-                      <option key={item.row.entity_id} value={item.row.entity_id}>
-                        {item.row.title} ({item.collection_name})
-                      </option>
-                    ))}
-                  </select>
-                  <Button type="button" variant="outline" onClick={() => void handleCreateRow()}>
-                    Add row
-                  </Button>
-                </div>
-
-                {loadingRows ? <p className="subtle">Loading rows...</p> : null}
-                {!loadingRows && !rowsPayload ? (
-                  <p className="subtle">
-                    {hasActiveCollectionRun ? "Workspace updating. Rows will appear when sync finishes." : "No rows yet."}
-                  </p>
-                ) : null}
-                {!loadingRows && rowsPayload ? (
-                  <div className="overflow-x-auto rounded-xl border border-border/70">
-                    <table className="w-full min-w-[860px] text-sm">
-                      <thead className="bg-muted/30">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-medium">Name</th>
-                          {rowsPayload.columns
-                            .filter((column) => column.key !== "title")
-                            .map((column) => (
-                              <th key={column.id} className="px-3 py-2 text-left font-medium">
-                                <div className="flex items-center gap-2">
-                                  <Input
-                                    defaultValue={column.label}
-                                    className="h-8"
-                                    onBlur={(event) => void handleRenameColumn(column.id, event.target.value)}
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-8 px-2"
-                                    onClick={() => void handleMoveColumn(column.id, -1)}
-                                  >
-                                    ↑
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-8 px-2"
-                                    onClick={() => void handleMoveColumn(column.id, 1)}
-                                  >
-                                    ↓
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-8 px-2"
-                                    onClick={() => void handleDeleteColumn(column.id)}
-                                  >
-                                    X
-                                  </Button>
-                                </div>
-                              </th>
-                            ))}
-                          <th className="px-3 py-2 text-left font-medium">Updated</th>
-                          <th className="px-3 py-2 text-left font-medium">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rowsPayload.rows.map((row) => (
-                          <tr key={row.id} className="border-t border-border/70">
-                            <td className="px-3 py-2 align-top">
-                              <Link
-                                href={`/app/spaces/${spaceSlug}/${selectedCollection.slug}/${row.id}`}
-                                className="font-medium hover:underline"
-                              >
-                                {row.title}
-                              </Link>
-                              {row.summary ? <p className="subtle mt-1 text-xs">{row.summary}</p> : null}
-                            </td>
-                            {row.cells.map((cell) => (
-                              <td key={`${row.id}-${cell.column_id}`} className="px-3 py-2 align-top">
-                                <Input
-                                  defaultValue={cell.display_value ?? ""}
-                                  className="h-8"
-                                  placeholder={cell.label}
-                                  onBlur={(event) =>
-                                    void handleUpdateCell(row.id, cell.column_id, event.target.value)
-                                  }
-                                />
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {cell.source_kind ? (
-                                    <span className="tag">{cell.source_kind}</span>
-                                  ) : (
-                                    <span className="tag">missing</span>
-                                  )}
-                                  {cell.sources.length > 0 ? <span className="tag">{cell.sources.length} sources</span> : null}
-                                  {cell.pending_suggestion_count > 0 ? (
-                                    <span className="tag border-amber-300 bg-amber-100 text-amber-900">
-                                      {cell.pending_suggestion_count} pending
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {cell.pending_suggestions.length > 0 ? (
-                                  <div className="mt-2 rounded-md border border-amber-300/60 bg-amber-50 p-2 text-xs text-amber-900">
-                                    Suggested: {cell.pending_suggestions[0]?.suggested_display_value ?? "Pending value"}
-                                  </div>
-                                ) : null}
-                              </td>
-                            ))}
-                            <td className="px-3 py-2 align-top text-xs text-muted-foreground">
-                              {formatTimestamp(row.updated_at)}
-                            </td>
-                            <td className="px-3 py-2 align-top">
-                              <div className="flex gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="h-8 px-2"
-                                  onClick={() => void handleMoveRow(row.id, -1)}
-                                >
-                                  ↑
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="h-8 px-2"
-                                  onClick={() => void handleMoveRow(row.id, 1)}
-                                >
-                                  ↓
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="h-8"
-                                  onClick={() => void handleDeleteRow(row.id)}
-                                >
-                                  Delete
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <p className="subtle">Select or create a table to begin.</p>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      <Sheet open={inspectorSheetOpen} onOpenChange={setInspectorSheetOpen}>
+        <SheetContent side="right" className="w-[94vw] overflow-y-auto sm:max-w-[440px]">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Workspace inspector</SheetTitle>
+            <SheetDescription>Secondary actions stay here so the table remains focused.</SheetDescription>
+          </SheetHeader>
+          {inspectorContent}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

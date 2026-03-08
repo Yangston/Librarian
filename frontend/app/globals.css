@@ -1543,6 +1543,531 @@ code {
   background: color-mix(in srgb, var(--primary) 12%, var(--card));
 }
 
+.spacesLayout {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  min-width: 0;
+  overflow: hidden;
+}
+
+@media (min-width: 1280px) {
+  .spacesLayout {
+    grid-template-columns: 280px minmax(0, 1fr) 340px;
+  }
+
+  .spacesLayoutInspectorHidden {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .spacesLayoutRailCollapsed {
+    grid-template-columns: 88px minmax(0, 1fr) 340px;
+  }
+
+  .spacesLayoutRailCollapsed.spacesLayoutInspectorHidden {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+}
+
+.spacesLayout > * {
+  min-width: 0;
+}
+
+.spacesRail,
+.spacesCanvasPanel,
+.spacesInspectorPanel,
+.rowDetailHero {
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, transparent), color-mix(in srgb, var(--panel-strong) 92%, transparent));
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--shadow) 92%, transparent);
+}
+
+.spacesRail {
+  position: sticky;
+  top: calc(3.5rem + 1rem);
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+  max-height: calc(100dvh - 5.5rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-self: start;
+}
+
+.spacesRailCollapsed {
+  justify-items: center;
+  padding-inline: 0.65rem;
+}
+
+.spacesRailCollapsedMeta {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+}
+
+.spacesRailHeader {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.spacesRailTitle {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.1;
+}
+
+.spacesRailSection {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.spacesSectionHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.spacesNavStack {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.spacesNavItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+  color: var(--foreground);
+  text-decoration: none;
+  transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.spacesNavItem:hover {
+  text-decoration: none;
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
+}
+
+.spacesNavItem.active {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, var(--card)), color-mix(in srgb, var(--card) 94%, transparent));
+}
+
+.spacesNavItemCompact {
+  padding-block: 0.75rem;
+}
+
+.spacesNavMeta,
+.spacesNavDescription {
+  margin: 0.2rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+}
+
+.spacesNavDescription {
+  line-height: 1.4;
+}
+
+.spacesEmptyState {
+  border: 1px dashed color-mix(in srgb, var(--border) 86%, transparent);
+  border-radius: 18px;
+  padding: 0.95rem;
+  background: color-mix(in srgb, var(--card) 60%, transparent);
+  color: var(--muted-foreground);
+  display: grid;
+  gap: 0.4rem;
+}
+
+.spacesCanvasStack {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.spacesHero,
+.rowDetailHero {
+  padding: 1.1rem 1.15rem;
+}
+
+.spacesStickyHero,
+.rowDetailHero {
+  position: sticky;
+  top: calc(3.5rem + 0.8rem);
+  z-index: 10;
+  backdrop-filter: blur(12px);
+}
+
+.spacesHeroTitle {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+}
+
+.spacesHeroDescription {
+  margin: 0.5rem 0 0;
+  max-width: 68ch;
+  color: var(--muted-foreground);
+}
+
+.spacesBreadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.spacesBreadcrumbs a {
+  color: inherit;
+}
+
+.spacesHeroActions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.spacesMetricGrid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-top: 1rem;
+}
+
+.spacesMetric,
+.spacesInspectorMetric {
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+  padding: 0.85rem 0.9rem;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.spacesMetric span,
+.spacesInspectorMetric span {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.spacesMetric strong,
+.spacesInspectorMetric strong {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.spacesCanvasPanel {
+  padding: 1rem;
+  min-width: 0;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.spacesReviewStrip {
+  border: 1px solid rgba(217, 119, 6, 0.24);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 250, 235, 0.98), rgba(255, 246, 220, 0.94));
+  box-shadow: 0 14px 36px rgba(161, 98, 7, 0.08);
+  padding: 1rem 1.05rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.spacesCommandBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.spacesQuickFilter {
+  min-width: min(460px, 100%);
+  flex: 1 1 320px;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 999px;
+  padding: 0 0.9rem;
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+}
+
+.spacesDataCard {
+  margin-top: 0.95rem;
+}
+
+.spacesTableWrap {
+  overflow: auto;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+  max-width: 100%;
+  max-height: min(70dvh, 900px);
+}
+
+.spacesTable {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.spacesTable th,
+.spacesTable td {
+  padding: 0.85rem 0.9rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  vertical-align: top;
+  text-align: left;
+}
+
+.spacesTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-top: 0;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-foreground);
+  background: linear-gradient(180deg, rgba(247, 252, 251, 0.98), rgba(241, 248, 246, 0.95));
+}
+
+.dark .spacesTable thead th {
+  background: linear-gradient(180deg, rgba(21, 33, 34, 0.98), rgba(18, 28, 30, 0.96));
+}
+
+.spacesTable tbody tr:hover td {
+  background: color-mix(in srgb, var(--accent) 4%, var(--card));
+}
+
+.spacesRowTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.spacesRowSummary {
+  margin: 0.45rem 0 0;
+  max-width: 28ch;
+  font-size: 0.84rem;
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+.spacesCellInput {
+  min-width: 180px;
+  background: color-mix(in srgb, var(--background) 88%, white);
+}
+
+.spacesCellMeta {
+  margin: 0.45rem 0 0;
+  font-size: 0.76rem;
+  color: var(--muted-foreground);
+}
+
+.spacesSuggestionHint {
+  margin-top: 0.55rem;
+  border: 1px solid rgba(217, 119, 6, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 247, 218, 0.84);
+  color: #8a5200;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.spacesRowActions {
+  display: flex;
+  gap: 0.45rem;
+  opacity: 0.82;
+}
+
+.spacesTable tbody tr:hover .spacesRowActions,
+.spacesTable tbody tr:focus-within .spacesRowActions {
+  opacity: 1;
+}
+
+.spacesTableState,
+.spacesEmptyHero {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.spacesInspectorPanel {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  position: sticky;
+  top: calc(3.5rem + 1rem);
+  max-height: calc(100dvh - 5.5rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-self: start;
+}
+
+.spacesInspectorTabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.spacesInspectorTab {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  padding: 0.55rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  color: var(--foreground);
+}
+
+.spacesInspectorTab.active {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+
+.spacesInspectorCard,
+.spacesInspectorDanger,
+.workspaceFieldCard,
+.workspaceEvidenceCard {
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+  padding: 0.95rem;
+}
+
+.spacesInspectorDanger {
+  background: linear-gradient(180deg, rgba(255, 244, 244, 0.88), rgba(255, 250, 250, 0.92));
+  border-color: color-mix(in srgb, var(--destructive) 24%, var(--border));
+}
+
+.dark .spacesInspectorDanger {
+  background: linear-gradient(180deg, rgba(83, 31, 31, 0.62), rgba(36, 16, 16, 0.9));
+  border-color: color-mix(in srgb, var(--destructive) 42%, var(--border));
+}
+
+.dark .spacesReviewStrip {
+  background: linear-gradient(180deg, rgba(72, 52, 15, 0.92), rgba(45, 33, 11, 0.95));
+  border-color: rgba(217, 119, 6, 0.34);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2);
+}
+
+.dark .spacesReviewStrip .font-medium {
+  color: #f8deb0;
+}
+
+.dark .spacesReviewStrip .text-sm {
+  color: rgba(248, 222, 176, 0.82);
+}
+
+.dark .spacesSuggestionHint {
+  background: rgba(89, 63, 18, 0.72);
+  border-color: rgba(217, 119, 6, 0.3);
+  color: #f3d188;
+}
+
+.spacesInspectorLabel {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.rowDetailLayout {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 1180px) {
+  .rowDetailLayout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+
+.rowDetailInspector {
+  min-width: 0;
+  align-self: start;
+}
+
+.workspaceDisclosure {
+  margin-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding-top: 0.75rem;
+}
+
+.workspaceDisclosure summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.workspaceDisclosureBody {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.workspaceEvidenceCard {
+  padding: 0.8rem;
+}
+
+@media (max-width: 767px) {
+  .spacesRail,
+  .spacesInspectorPanel,
+  .spacesStickyHero,
+  .rowDetailHero {
+    position: static;
+    top: auto;
+  }
+
+  .spacesQuickFilter {
+    min-width: 100%;
+  }
+
+  .spacesInspectorTabs {
+    grid-template-columns: 1fr;
+  }
+
+  .spacesReviewStrip,
+  .spacesCommandBar {
+    align-items: stretch;
+  }
+
+  .spacesHeroActions {
+    width: 100%;
+  }
+
+  .spacesHeroActions > * {
+    flex: 1 1 46%;
+  }
+}
+
 @media (max-width: 760px) {
   .productShell {
     grid-template-columns: 1fr;
@@ -1625,4 +2150,5 @@ code {
   .graphInlineEditor {
     width: min(248px, calc(100% - 1rem));
   }
+
 }
