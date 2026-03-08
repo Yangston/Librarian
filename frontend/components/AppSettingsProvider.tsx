@@ -19,6 +19,7 @@ type AppSettingsContextValue = {
   setDevMode: (devMode: boolean) => void;
   setDensity: (density: AppDensity) => void;
   setReducedMotion: (reducedMotion: boolean) => void;
+  setEnrichmentSources: (enrichmentSources: boolean) => void;
   resetSettings: () => void;
 };
 
@@ -106,6 +107,9 @@ export function AppSettingsProvider({
       },
       setReducedMotion: (reducedMotion) => {
         setSettings((current) => ({ ...current, reducedMotion }));
+      },
+      setEnrichmentSources: (enrichmentSources) => {
+        setSettings((current) => ({ ...current, enrichmentSources }));
       },
       resetSettings: () => {
         setSettings(DEFAULT_APP_SETTINGS);

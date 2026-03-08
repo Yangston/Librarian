@@ -120,6 +120,7 @@ class ScopedGraphNode(BaseModel):
     display_name: str
     type_label: str
     external: bool = False
+    pending_suggestion_count: int = 0
 
 
 class ScopedGraphEdge(BaseModel):
@@ -130,6 +131,9 @@ class ScopedGraphEdge(BaseModel):
     to_entity_id: int
     relation_type: str
     confidence: float
+    source_kind: str = "conversation"
+    status: str = "accepted"
+    suggested: bool = False
 
 
 class ScopedGraphData(BaseModel):
@@ -142,6 +146,7 @@ class ScopedGraphData(BaseModel):
     include_external: bool
     nodes: list[ScopedGraphNode]
     edges: list[ScopedGraphEdge]
+    pending_suggestion_count: int = 0
 
 
 CollectionTreeNode.model_rebuild()

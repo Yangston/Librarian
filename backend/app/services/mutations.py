@@ -48,6 +48,7 @@ from app.schemas.relation import RelationRead, RelationWithEntitiesRead
 from app.services.experience_projection import rebuild_experience_projection
 from app.services.extraction import run_extraction_for_conversation
 from app.services.organization import rebuild_pod_themes
+from app.services.workspace_sync import rebuild_workspace_for_pod
 
 
 def update_message(db: Session, message_id: int, payload: MessageUpdateRequest) -> Message | None:
@@ -676,6 +677,7 @@ def _reconcile_organization_memberships(db: Session) -> None:
     pod_ids = list(db.scalars(select(Pod.id).order_by(Pod.id.asc())).all())
     for pod_id in pod_ids:
         rebuild_pod_themes(db, pod_id=int(pod_id))
+        rebuild_workspace_for_pod(db, pod_id=int(pod_id), allow_enrichment=False)
 
 
 def _build_filtered_replay_result(
@@ -813,5 +815,7 @@ class _ReplayExtractor(ExtractorInterface):
 
 def _commit_with_projection(db: Session) -> None:
     rebuild_experience_projection(db, conversation_id=None, space_id=None)
+    for pod_id in db.scalars(select(Pod.id).order_by(Pod.id.asc())).all():
+        rebuild_workspace_for_pod(db, pod_id=int(pod_id), allow_enrichment=False)
     db.commit()
 

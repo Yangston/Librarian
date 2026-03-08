@@ -13,7 +13,10 @@ class Evidence(Base, IdMixin):
 
     __tablename__ = "evidence"
     __table_args__ = (
-        CheckConstraint("fact_id IS NOT NULL OR relation_id IS NOT NULL", name="ck_evidence_has_claim"),
+        CheckConstraint(
+            "fact_id IS NOT NULL OR relation_id IS NOT NULL OR collection_item_value_id IS NOT NULL OR collection_item_relation_id IS NOT NULL",
+            name="ck_evidence_has_claim",
+        ),
     )
 
     source_id: Mapped[int] = mapped_column(
@@ -28,6 +31,16 @@ class Evidence(Base, IdMixin):
     )
     relation_id: Mapped[int | None] = mapped_column(
         ForeignKey("relations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    collection_item_value_id: Mapped[int | None] = mapped_column(
+        ForeignKey("collection_item_values.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    collection_item_relation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("collection_item_relations.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )

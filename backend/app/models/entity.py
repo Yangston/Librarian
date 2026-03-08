@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, func
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CreatedAtMixin, IdMixin, UpdatedAtMixin
@@ -15,6 +15,11 @@ class Entity(Base, IdMixin, CreatedAtMixin, UpdatedAtMixin):
     __tablename__ = "entities"
 
     conversation_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    pod_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pods.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     canonical_name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)

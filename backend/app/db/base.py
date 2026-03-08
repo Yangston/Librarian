@@ -3,7 +3,12 @@
 from app.models import (
     ClaimIndex,
     Collection,
+    CollectionColumn,
     CollectionItem,
+    CollectionItemRelation,
+    CollectionItemRelationSuggestion,
+    CollectionItemValue,
+    CollectionItemValueSuggestion,
     Conversation,
     ConversationEntityLink,
     Entity,
@@ -28,6 +33,7 @@ from app.models import (
     SpacePage,
     Source,
     WorkspaceEdge,
+    WorkspaceEnrichmentRun,
 )
 from app.models.base import Base
 
@@ -40,8 +46,14 @@ __all__ = [
     "Space",
     "SpacePage",
     "Collection",
+    "CollectionColumn",
     "CollectionItem",
+    "CollectionItemValue",
+    "CollectionItemRelation",
+    "CollectionItemValueSuggestion",
+    "CollectionItemRelationSuggestion",
     "WorkspaceEdge",
+    "WorkspaceEnrichmentRun",
     "Entity",
     "LibraryItem",
     "ItemProperty",

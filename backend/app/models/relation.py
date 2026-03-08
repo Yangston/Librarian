@@ -12,6 +12,11 @@ class Relation(Base, IdMixin, CreatedAtMixin):
     __tablename__ = "relations"
 
     conversation_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    pod_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pods.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     from_entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
     relation_type: Mapped[str] = mapped_column(String(255), nullable=False)
     to_entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)

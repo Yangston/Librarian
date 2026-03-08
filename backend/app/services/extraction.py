@@ -38,8 +38,8 @@ from app.services.embeddings import (
 )
 from app.services.conversations import get_conversation_pod_id
 from app.services.experience_projection import rebuild_experience_projection
-from app.services.organization import rebuild_pod_themes_for_conversation
 from app.services.schema_stabilization import run_schema_stabilization
+from app.services.workspace_sync import run_workspace_sync_for_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +176,7 @@ def _replace_extracted_records(
     db.flush()
 
     message_timestamps = {message.id: message.timestamp for message in messages}
+    conversation_pod_id = get_conversation_pod_id(db, conversation_id)
     resolution_plan = EntityResolver().resolve(
         result.entities,
         observed_message_timestamps=message_timestamps,
@@ -191,6 +192,7 @@ def _replace_extracted_records(
         first_seen_timestamp = _first_seen_timestamp(extracted_entity.source_message_ids, message_timestamps)
         entity = Entity(
             conversation_id=conversation_id,
+            pod_id=conversation_pod_id,
             name=extracted_entity.name,
             display_name=extracted_entity.name,
             canonical_name=assignment.canonical_name,
@@ -232,7 +234,6 @@ def _replace_extracted_records(
             assignment.extracted_index
         ]
     local_entity_ids = {entity.id for entity in entities_by_index.values()}
-    conversation_pod_id = get_conversation_pod_id(db, conversation_id)
     global_merge_audits = _apply_global_entity_matching(
         db,
         conversation_id=conversation_id,
@@ -298,6 +299,7 @@ def _replace_extracted_records(
         )
         fact_row = Fact(
             conversation_id=conversation_id,
+            pod_id=conversation_pod_id,
             subject_entity_id=subject_entity.id,
             predicate=predicate_decision.canonical_predicate,
             object_value=extracted_fact.value_text,
@@ -351,6 +353,7 @@ def _replace_extracted_records(
         qualifiers.setdefault("extraction_confidence", extracted_relation.confidence)
         relation_row = Relation(
             conversation_id=conversation_id,
+            pod_id=conversation_pod_id,
             from_entity_id=from_entity.id,
             relation_type=relation_type_decision.canonical_predicate,
             to_entity_id=to_entity.id,
@@ -387,10 +390,7 @@ def _replace_extracted_records(
         resolution_plan=resolution_plan,
         canonical_entity_by_cluster=canonical_entity_by_cluster,
     )
-    # Theme synthesis reads conversation entity links via SQL queries; flush first
-    # because some test sessions run with autoflush disabled.
     db.flush()
-    rebuild_pod_themes_for_conversation(db, conversation_id=conversation_id)
     if post_processing_mode == "inline":
         _apply_embeddings_on_write(
             entity_embeddings=entity_embedding_rows,
@@ -405,6 +405,11 @@ def _replace_extracted_records(
     )
     if post_processing_mode == "inline":
         run_schema_stabilization(db, conversation_id=conversation_id)
+    run_workspace_sync_for_conversation(
+        db,
+        conversation_id=conversation_id,
+        allow_enrichment=post_processing_mode == "inline",
+    )
 
     rebuild_experience_projection(
         db,
@@ -902,6 +907,8 @@ def _log_extractor_run(
     validated_output = _extract_validated_output(extractor, extraction_result)
     extractor_run = ExtractorRun(
         conversation_id=conversation_id,
+        pod_id=get_conversation_pod_id(db, conversation_id),
+        run_kind="conversation_extract",
         model_name=_extract_model_name(extractor),
         prompt_version=_extract_prompt_version(extractor),
         input_message_ids_json=[message.id for message in messages],

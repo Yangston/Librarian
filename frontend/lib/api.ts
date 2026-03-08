@@ -481,6 +481,7 @@ export type ScopedGraphNode = {
   display_name: string;
   type_label: string;
   external: boolean;
+  pending_suggestion_count: number;
 };
 
 export type ScopedGraphEdge = {
@@ -489,6 +490,9 @@ export type ScopedGraphEdge = {
   to_entity_id: number;
   relation_type: string;
   confidence: number;
+  source_kind: string;
+  status: string;
+  suggested: boolean;
 };
 
 export type ScopedGraphData = {
@@ -499,6 +503,7 @@ export type ScopedGraphData = {
   include_external: boolean;
   nodes: ScopedGraphNode[];
   edges: ScopedGraphEdge[];
+  pending_suggestion_count: number;
 };
 
 export type ExtractionRunResult = {
@@ -515,6 +520,7 @@ export type LiveChatTurnResult = {
   user_message: MessageRead;
   assistant_message: MessageRead;
   extraction: ExtractionRunResult | null;
+  workspace_enrichment_run_id: number | null;
 };
 
 export type DeleteResult = {
@@ -775,7 +781,13 @@ export async function rerunExtraction(conversationId: string): Promise<Extractio
 
 export async function runLiveChatTurn(
   conversationId: string,
-  payload: { content: string; pod_id?: number; auto_extract?: boolean; system_prompt?: string }
+  payload: {
+    content: string;
+    pod_id?: number;
+    auto_extract?: boolean;
+    system_prompt?: string;
+    workspace_enrichment_include_sources?: boolean;
+  }
 ): Promise<LiveChatTurnResult> {
   return apiPost<LiveChatTurnResult>(
     `/conversations/${encodeURIComponent(conversationId)}/chat/turn`,
@@ -1219,4 +1231,428 @@ export function warmWorkspaceApi(): Promise<void> {
   ]).then(() => undefined);
 
   return appWarmupPromise;
+}
+
+export type WorkspaceSpaceRead = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  collection_count: number;
+  row_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkspaceCollectionRead = {
+  id: number;
+  pod_id: number;
+  parent_id: number | null;
+  kind: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  is_auto_generated: boolean;
+  sort_order: number;
+  column_count: number;
+  row_count: number;
+  pending_suggestion_count: number;
+  has_pending_suggestions: boolean;
+  updated_at: string;
+};
+
+export type WorkspaceColumnRead = {
+  id: number;
+  collection_id: number;
+  key: string;
+  label: string;
+  data_type: string;
+  kind: string;
+  sort_order: number;
+  required: boolean;
+  is_relation: boolean;
+  relation_target_collection_id: number | null;
+  origin: string;
+  planner_locked: boolean;
+  user_locked: boolean;
+  enrichment_policy_json: Record<string, unknown>;
+  coverage_count: number;
+  coverage_ratio: number;
+};
+
+export type WorkspaceSourceRead = {
+  id: number;
+  source_kind: string;
+  title: string | null;
+  uri: string | null;
+  snippet: string | null;
+  confidence: number | null;
+  created_at: string;
+};
+
+export type WorkspaceCellSuggestionRead = {
+  id: number;
+  suggested_display_value: string | null;
+  source_kind: string;
+  confidence: number | null;
+  status: string;
+  sources: WorkspaceSourceRead[];
+};
+
+export type WorkspaceCellRead = {
+  id: number | null;
+  column_id: number;
+  column_key: string;
+  label: string;
+  data_type: string;
+  value_json: unknown;
+  display_value: string | null;
+  source_kind: string | null;
+  confidence: number | null;
+  status: string | null;
+  edited_by_user: boolean;
+  last_verified_at: string | null;
+  sources: WorkspaceSourceRead[];
+  pending_suggestion_count: number;
+  pending_suggestions: WorkspaceCellSuggestionRead[];
+};
+
+export type WorkspaceRowRead = {
+  id: number;
+  collection_id: number;
+  entity_id: number;
+  primary_entity_id: number | null;
+  title: string;
+  summary: string | null;
+  detail_blurb: string | null;
+  sort_order: number;
+  updated_at: string;
+  cells: WorkspaceCellRead[];
+};
+
+export type WorkspaceRowRelationRead = {
+  id: number;
+  relation_label: string;
+  direction: string;
+  other_row_id: number;
+  other_row_title: string;
+  source_kind: string;
+  confidence: number | null;
+  status: string;
+  sources: WorkspaceSourceRead[];
+  suggested: boolean;
+};
+
+export type WorkspaceRowDetailRead = {
+  id: number;
+  collection_id: number;
+  collection_name: string;
+  collection_slug: string;
+  entity_id: number;
+  primary_entity_id: number | null;
+  title: string;
+  summary: string | null;
+  detail_blurb: string | null;
+  notes_markdown: string | null;
+  sort_order: number;
+  updated_at: string;
+  cells: WorkspaceCellRead[];
+  relations: WorkspaceRowRelationRead[];
+  pending_relation_suggestion_count: number;
+};
+
+export type WorkspaceRowsResponse = {
+  collection: WorkspaceCollectionRead;
+  columns: WorkspaceColumnRead[];
+  rows: WorkspaceRowRead[];
+  total: number;
+  limit: number;
+  offset: number;
+  pending_suggestion_count: number;
+};
+
+export type WorkspaceOverviewResponse = {
+  space: WorkspaceSpaceRead;
+  collections: WorkspaceCollectionRead[];
+};
+
+export type WorkspaceCatalogRow = {
+  collection_id: number;
+  collection_name: string;
+  collection_slug: string;
+  space_id: number;
+  space_name: string;
+  space_slug: string;
+  row: WorkspaceRowRead;
+};
+
+export type WorkspaceLibraryResponse = {
+  items: WorkspaceCatalogRow[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type WorkspacePropertyCatalogRow = {
+  id: number;
+  collection_id: number;
+  collection_name: string;
+  collection_slug: string;
+  space_id: number;
+  space_name: string;
+  key: string;
+  label: string;
+  data_type: string;
+  kind: string;
+  origin: string;
+  planner_locked: boolean;
+  user_locked: boolean;
+  coverage_count: number;
+  row_count: number;
+  coverage_ratio: number;
+  updated_at: string;
+};
+
+export type WorkspacePropertyCatalogResponse = {
+  items: WorkspacePropertyCatalogRow[];
+  total: number;
+};
+
+export type WorkspaceSyncRunRead = {
+  conversation_id: string;
+  pod_id: number;
+  planner_run_id: number | null;
+  enrichment_run_id: number | null;
+  collections_upserted: number;
+  rows_upserted: number;
+  values_upserted: number;
+  relations_upserted: number;
+};
+
+export type WorkspaceEnrichmentRunRead = {
+  id: number;
+  pod_id: number;
+  conversation_id: string | null;
+  collection_id: number | null;
+  collection_item_id: number | null;
+  requested_by: string;
+  run_kind: string;
+  status: string;
+  stage: string;
+  error_message: string | null;
+  summary_json: Record<string, unknown>;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
+export type WorkspaceSuggestionReviewResult = {
+  applied: number;
+  rejected: number;
+};
+
+export async function getWorkspaceSpacesV3(): Promise<WorkspaceSpaceRead[]> {
+  return apiGet("/v3/spaces");
+}
+
+export async function createWorkspaceSpaceV3(payload: {
+  name: string;
+  description?: string | null;
+}): Promise<WorkspaceSpaceRead> {
+  return apiPost("/v3/spaces", payload);
+}
+
+export async function updateWorkspaceSpaceV3(
+  spaceId: number,
+  payload: { name?: string; description?: string | null }
+): Promise<WorkspaceSpaceRead> {
+  return apiPatch(`/v3/spaces/${spaceId}`, payload);
+}
+
+export async function deleteWorkspaceSpaceV3(spaceId: number): Promise<{ space_id: number; deleted: boolean }> {
+  return apiDelete(`/v3/spaces/${spaceId}`);
+}
+
+export async function getWorkspaceOverviewV3(spaceId: number): Promise<WorkspaceOverviewResponse> {
+  return apiGet(`/v3/spaces/${spaceId}/workspace`);
+}
+
+export async function createWorkspaceCollectionV3(
+  spaceId: number,
+  payload: { name: string; description?: string | null }
+): Promise<WorkspaceCollectionRead> {
+  return apiPost(`/v3/spaces/${spaceId}/collections`, payload);
+}
+
+export async function updateWorkspaceCollectionV3(
+  collectionId: number,
+  payload: { name?: string; description?: string | null }
+): Promise<WorkspaceCollectionRead> {
+  return apiPatch(`/v3/collections/${collectionId}`, payload);
+}
+
+export async function deleteWorkspaceCollectionV3(
+  collectionId: number
+): Promise<{ collection_id: number; deleted: boolean }> {
+  return apiDelete(`/v3/collections/${collectionId}`);
+}
+
+export async function createWorkspaceColumnV3(
+  collectionId: number,
+  payload: { label: string; data_type?: string }
+): Promise<WorkspaceColumnRead> {
+  return apiPost(`/v3/collections/${collectionId}/columns`, payload);
+}
+
+export async function updateWorkspaceColumnV3(
+  columnId: number,
+  payload: { label?: string; sort_order?: number; required?: boolean; user_locked?: boolean }
+): Promise<WorkspaceColumnRead> {
+  return apiPatch(`/v3/columns/${columnId}`, payload);
+}
+
+export async function deleteWorkspaceColumnV3(
+  columnId: number
+): Promise<{ column_id: number; deleted: boolean }> {
+  return apiDelete(`/v3/columns/${columnId}`);
+}
+
+export async function getWorkspaceRowsV3(params: {
+  collection_id: number;
+  limit?: number;
+  offset?: number;
+  q?: string;
+}): Promise<WorkspaceRowsResponse> {
+  return apiGet(
+    `/v3/collections/${params.collection_id}/rows${buildQuery({
+      limit: params.limit,
+      offset: params.offset,
+      q: params.q
+    })}`
+  );
+}
+
+export async function createWorkspaceRowV3(
+  collectionId: number,
+  payload: { entity_id: number }
+): Promise<WorkspaceRowDetailRead> {
+  return apiPost(`/v3/collections/${collectionId}/rows`, payload);
+}
+
+export async function updateWorkspaceRowV3(
+  rowId: number,
+  payload: {
+    title?: string;
+    summary?: string | null;
+    detail_blurb?: string | null;
+    notes_markdown?: string | null;
+    sort_order?: number;
+  }
+): Promise<WorkspaceRowDetailRead> {
+  return apiPatch(`/v3/collection-rows/${rowId}`, payload);
+}
+
+export async function deleteWorkspaceRowV3(rowId: number): Promise<{ row_id: number; deleted: boolean }> {
+  return apiDelete(`/v3/collection-rows/${rowId}`);
+}
+
+export async function updateWorkspaceCellV3(
+  rowId: number,
+  columnId: number,
+  payload: { display_value?: string | null; value_json?: unknown; status?: string | null }
+): Promise<WorkspaceRowDetailRead> {
+  return apiPatch(`/v3/collection-rows/${rowId}/values/${columnId}`, payload);
+}
+
+export async function getWorkspaceRowV3(rowId: number): Promise<WorkspaceRowDetailRead> {
+  return apiGet(`/v3/collection-rows/${rowId}`);
+}
+
+export async function getWorkspaceLibraryV3(params?: {
+  limit?: number;
+  offset?: number;
+  q?: string;
+  space_id?: number;
+  collection_id?: number;
+}): Promise<WorkspaceLibraryResponse> {
+  return apiGet(
+    `/v3/library${buildQuery({
+      limit: params?.limit,
+      offset: params?.offset,
+      q: params?.q,
+      space_id: params?.space_id,
+      collection_id: params?.collection_id
+    })}`
+  );
+}
+
+export async function getWorkspacePropertiesV3(params?: {
+  space_id?: number;
+}): Promise<WorkspacePropertyCatalogResponse> {
+  return apiGet(`/v3/properties${buildQuery({ space_id: params?.space_id })}`);
+}
+
+export async function runWorkspaceSyncV3(conversationId: string): Promise<WorkspaceSyncRunRead> {
+  return apiPost(`/v3/conversations/${encodeURIComponent(conversationId)}/workspace-sync`);
+}
+
+export async function enrichWorkspaceRowV3(
+  rowId: number,
+  options?: { include_sources?: boolean }
+): Promise<WorkspaceEnrichmentRunRead> {
+  return apiPost(
+    `/v3/collection-rows/${rowId}/enrich${buildQuery({ include_sources: options?.include_sources })}`
+  );
+}
+
+export async function enrichWorkspaceSpaceV3(
+  spaceId: number,
+  options?: { include_sources?: boolean }
+): Promise<WorkspaceEnrichmentRunRead> {
+  return apiPost(
+    `/v3/spaces/${spaceId}/enrich${buildQuery({ include_sources: options?.include_sources })}`
+  );
+}
+
+export async function enrichWorkspaceCollectionV3(
+  collectionId: number,
+  options?: { include_sources?: boolean }
+): Promise<WorkspaceEnrichmentRunRead> {
+  return apiPost(
+    `/v3/collections/${collectionId}/enrich${buildQuery({ include_sources: options?.include_sources })}`
+  );
+}
+
+export async function getWorkspaceEnrichmentRunV3(runId: number): Promise<WorkspaceEnrichmentRunRead> {
+  return apiGet(`/v3/enrichment-runs/${runId}`);
+}
+
+export async function getLatestWorkspaceEnrichmentRunForSpaceV3(
+  spaceId: number
+): Promise<WorkspaceEnrichmentRunRead | null> {
+  return apiGet(`/v3/spaces/${spaceId}/enrichment/latest`);
+}
+
+export async function acceptWorkspaceCollectionSuggestionsV3(
+  collectionId: number
+): Promise<WorkspaceSuggestionReviewResult> {
+  return apiPost(`/v3/collections/${collectionId}/suggestions/accept`);
+}
+
+export async function rejectWorkspaceCollectionSuggestionsV3(
+  collectionId: number
+): Promise<WorkspaceSuggestionReviewResult> {
+  return apiPost(`/v3/collections/${collectionId}/suggestions/reject`);
+}
+
+export async function acceptWorkspaceGraphSuggestionsV3(
+  scopeKey: string
+): Promise<WorkspaceSuggestionReviewResult> {
+  return apiPost(`/v3/graph/scopes/${encodeURIComponent(scopeKey)}/suggestions/accept`);
+}
+
+export async function rejectWorkspaceGraphSuggestionsV3(
+  scopeKey: string
+): Promise<WorkspaceSuggestionReviewResult> {
+  return apiPost(`/v3/graph/scopes/${encodeURIComponent(scopeKey)}/suggestions/reject`);
 }

@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { useIsDevMode } from "@/components/AppSettingsProvider";
+import { useAppSettings, useIsDevMode } from "@/components/AppSettingsProvider";
 import {
   type ConversationListItem,
   type MessageRead,
@@ -16,6 +16,7 @@ import {
   getConversationMessages,
   getConversations,
   getPods,
+  getWorkspaceEnrichmentRunV3,
   runLiveChatTurn,
   updateMessage
 } from "../../../lib/api";
@@ -33,6 +34,7 @@ import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Textarea } from "../../../components/ui/textarea";
 import { Checkbox } from "../../../components/ui/checkbox";
+import { useWorkspaceEnrichmentMonitor } from "../../../lib/use-workspace-enrichment-monitor";
 
 const PIN_STORAGE_KEY = "librarian.chat.pins.v1";
 const LAST_CONVERSATION_KEY = "librarian.chat.lastConversation.v1";
@@ -94,6 +96,7 @@ type DeleteIntent =
 
 function ChatPageInner() {
   const isDevMode = useIsDevMode();
+  const { settings } = useAppSettings();
   const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState("");
   const [conversationSearch, setConversationSearch] = useState("");
@@ -120,6 +123,7 @@ function ChatPageInner() {
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastExtractionSummary, setLastExtractionSummary] = useState<string | null>(null);
+  const workspaceEnrichment = useWorkspaceEnrichmentMonitor();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const appliedNewTokenRef = useRef<string | null>(null);
 
@@ -330,6 +334,7 @@ function ChatPageInner() {
     setConversationId(nextConversationId);
     setMessages([]);
     setLastExtractionSummary(null);
+    workspaceEnrichment.clearRun();
     setDeleteIntent(null);
   }
 
@@ -370,7 +375,8 @@ function ChatPageInner() {
         content,
         pod_id: needsPodOnCreate ? (parsedPodId as number) : undefined,
         auto_extract: autoExtract,
-        system_prompt: systemPrompt.trim() || undefined
+        system_prompt: systemPrompt.trim() || undefined,
+        workspace_enrichment_include_sources: settings.enrichmentSources
       });
       setMessages((current) => [
         ...current.filter((item) => item.id !== pendingUser.id),
@@ -387,6 +393,12 @@ function ChatPageInner() {
             result.extraction.entities_created
           }, facts ${result.extraction.facts_created}, relations ${result.extraction.relations_created}`
         );
+      }
+      if (result.workspace_enrichment_run_id !== null) {
+        const workspaceRun = await getWorkspaceEnrichmentRunV3(result.workspace_enrichment_run_id);
+        workspaceEnrichment.beginMonitoring(workspaceRun);
+      } else {
+        workspaceEnrichment.clearRun();
       }
       await loadConversationList();
     } catch (err) {
@@ -875,6 +887,14 @@ function ChatPageInner() {
               <p className="subtle" aria-live="polite">
                 {lastExtractionSummary}
               </p>
+            ) : null}
+            {workspaceEnrichment.run ? (
+              <div className="space-y-1" aria-live="polite">
+                <Badge variant="outline">
+                  Workspace run #{workspaceEnrichment.run.id} • {workspaceEnrichment.run.stage}
+                </Badge>
+                {workspaceEnrichment.statusMessage ? <p className="subtle">{workspaceEnrichment.statusMessage}</p> : null}
+              </div>
             ) : null}
           </CardContent>
         </Card>

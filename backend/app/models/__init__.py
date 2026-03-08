@@ -2,7 +2,12 @@
 
 from app.models.conversation_entity_link import ConversationEntityLink
 from app.models.collection import Collection
+from app.models.collection_column import CollectionColumn
 from app.models.collection_item import CollectionItem
+from app.models.collection_item_relation import CollectionItemRelation
+from app.models.collection_item_relation_suggestion import CollectionItemRelationSuggestion
+from app.models.collection_item_value import CollectionItemValue
+from app.models.collection_item_value_suggestion import CollectionItemValueSuggestion
 from app.models.claim_index import ClaimIndex
 from app.models.conversation import Conversation
 from app.models.entity import Entity
@@ -27,6 +32,7 @@ from app.models.space import Space
 from app.models.space_page import SpacePage
 from app.models.source import Source
 from app.models.workspace_edge import WorkspaceEdge
+from app.models.workspace_enrichment_run import WorkspaceEnrichmentRun
 
 __all__ = [
     "Message",
@@ -36,8 +42,14 @@ __all__ = [
     "Space",
     "SpacePage",
     "Collection",
+    "CollectionColumn",
     "CollectionItem",
+    "CollectionItemValue",
+    "CollectionItemRelation",
+    "CollectionItemValueSuggestion",
+    "CollectionItemRelationSuggestion",
     "WorkspaceEdge",
+    "WorkspaceEnrichmentRun",
     "Entity",
     "LibraryItem",
     "ItemProperty",

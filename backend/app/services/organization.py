@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.collection import Collection
 from app.models.collection_item import CollectionItem
+from app.models.collection_item_relation import CollectionItemRelation
+from app.models.collection_item_relation_suggestion import CollectionItemRelationSuggestion
 from app.models.conversation import Conversation
 from app.models.conversation_entity_link import ConversationEntityLink
 from app.models.entity import Entity
@@ -628,7 +630,17 @@ def get_scoped_graph(
             for value in db.scalars(select(Entity.id).where(Entity.merged_into_id.is_(None))).all()
         }
 
+    row_entity_by_row_id = {
+        int(row.id): int(row.entity_id)
+        for row in db.scalars(
+            select(CollectionItem).join(Collection, Collection.id == CollectionItem.collection_id).where(
+                Collection.pod_id == pod_id if pod_id is not None else True
+            )
+        ).all()
+    }
+
     graph_edges: list[ScopedGraphEdge] = []
+    seen_edges: set[tuple[int, int, str, str]] = set()
     for relation in relation_rows:
         from_in_scope = relation.from_entity_id in in_scope_ids
         to_in_scope = relation.to_entity_id in in_scope_ids
@@ -641,6 +653,10 @@ def get_scoped_graph(
         else:
             if not (from_in_scope and to_in_scope):
                 continue
+        edge_key = (int(relation.from_entity_id), int(relation.to_entity_id), str(relation.relation_type), "accepted")
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
         graph_edges.append(
             ScopedGraphEdge(
                 relation_id=relation.id,
@@ -648,6 +664,41 @@ def get_scoped_graph(
                 to_entity_id=relation.to_entity_id,
                 relation_type=relation.relation_type,
                 confidence=relation.confidence,
+                source_kind="conversation",
+                status="accepted",
+                suggested=False,
+            )
+        )
+    for relation in db.scalars(select(CollectionItemRelation)).all():
+        from_entity_id = row_entity_by_row_id.get(int(relation.from_collection_item_id))
+        to_entity_id = row_entity_by_row_id.get(int(relation.to_collection_item_id))
+        if from_entity_id is None or to_entity_id is None:
+            continue
+        from_in_scope = from_entity_id in in_scope_ids
+        to_in_scope = to_entity_id in in_scope_ids
+        if scope_mode == "global":
+            if not (from_in_scope and to_in_scope):
+                continue
+        elif include_external:
+            if not (from_entity_id in seed_ids or to_entity_id in seed_ids):
+                continue
+        else:
+            if not (from_in_scope and to_in_scope):
+                continue
+        edge_key = (from_entity_id, to_entity_id, str(relation.relation_label), "workspace")
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
+        graph_edges.append(
+            ScopedGraphEdge(
+                relation_id=1000000 + int(relation.id),
+                from_entity_id=from_entity_id,
+                to_entity_id=to_entity_id,
+                relation_type=relation.relation_label,
+                confidence=float(relation.confidence or 0.0),
+                source_kind=relation.source_kind,
+                status=relation.status,
+                suggested=False,
             )
         )
 
@@ -665,6 +716,49 @@ def get_scoped_graph(
             )
         ).all()
     )
+    pending_edge_count = 0
+    suggestion_rows = list(
+        db.scalars(select(CollectionItemRelationSuggestion).where(CollectionItemRelationSuggestion.status == "pending")).all()
+    )
+    for suggestion in suggestion_rows:
+        from_entity_id = row_entity_by_row_id.get(int(suggestion.from_collection_item_id))
+        to_entity_id = row_entity_by_row_id.get(int(suggestion.to_collection_item_id))
+        if from_entity_id is None or to_entity_id is None:
+            continue
+        from_in_scope = from_entity_id in in_scope_ids
+        to_in_scope = to_entity_id in in_scope_ids
+        if scope_mode == "global":
+            if not (from_in_scope and to_in_scope):
+                continue
+        elif include_external:
+            if not (from_entity_id in seed_ids or to_entity_id in seed_ids):
+                continue
+        else:
+            if not (from_in_scope and to_in_scope):
+                continue
+        edge_key = (from_entity_id, to_entity_id, str(suggestion.relation_label), "pending")
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
+        graph_edges.append(
+            ScopedGraphEdge(
+                relation_id=-int(suggestion.id),
+                from_entity_id=from_entity_id,
+                to_entity_id=to_entity_id,
+                relation_type=suggestion.relation_label,
+                confidence=float(suggestion.confidence or 0.0),
+                source_kind=suggestion.source_kind,
+                status=suggestion.status,
+                suggested=True,
+            )
+        )
+        pending_edge_count += 1
+    pending_node_counts: dict[int, int] = defaultdict(int)
+    for edge in graph_edges:
+        if not edge.suggested:
+            continue
+        pending_node_counts[int(edge.from_entity_id)] += 1
+        pending_node_counts[int(edge.to_entity_id)] += 1
     nodes = [
         ScopedGraphNode(
             entity_id=entity.id,
@@ -672,6 +766,7 @@ def get_scoped_graph(
             display_name=entity.display_name,
             type_label=entity.type_label,
             external=scope_mode != "global" and entity.id not in seed_ids,
+            pending_suggestion_count=pending_node_counts.get(int(entity.id), 0),
         )
         for entity in sorted(entities, key=lambda item: item.id)
     ]
@@ -683,6 +778,7 @@ def get_scoped_graph(
         include_external=include_external,
         nodes=nodes,
         edges=sorted(graph_edges, key=lambda item: item.relation_id),
+        pending_suggestion_count=pending_edge_count,
     )
 
 

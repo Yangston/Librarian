@@ -13,6 +13,11 @@ class Fact(Base, IdMixin, CreatedAtMixin):
     __tablename__ = "facts"
 
     conversation_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    pod_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pods.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     subject_entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
     predicate: Mapped[str] = mapped_column(String(255), nullable=False)
     object_value: Mapped[str] = mapped_column(String(1024), nullable=False)

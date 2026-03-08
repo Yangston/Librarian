@@ -14,6 +14,11 @@ from app.models.fact import Fact
 from app.services.embeddings import embed_texts_with_fallback
 from app.services.extraction import _build_entity_embedding_text, _build_fact_embedding_text  # noqa: PLC2701
 from app.services.schema_stabilization import run_schema_stabilization
+from app.services.workspace_sync import (
+    create_workspace_enrichment_run,
+    run_workspace_enrichment_run,
+    run_workspace_sync_for_conversation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,17 +85,40 @@ def run_schema_stabilization_job(conversation_id: str) -> None:
         db.close()
 
 
-def run_phase2_post_processing_jobs(conversation_id: str) -> None:
-    """Run both embedding and stabilization jobs for a conversation."""
+def run_noncritical_post_processing_jobs(conversation_id: str) -> None:
+    """Run non-blocking embedding and stabilization jobs for a conversation."""
 
     total_started = perf_counter()
     run_embedding_backfill_for_conversation(conversation_id)
     run_schema_stabilization_job(conversation_id)
     logger.info(
-        "phase2.post_processing_timing conversation_id=%s total_ms=%.2f",
+        "phase2.noncritical_post_processing_timing conversation_id=%s total_ms=%.2f",
         conversation_id,
         (perf_counter() - total_started) * 1000.0,
     )
+
+
+def run_workspace_enrichment_job(run_id: int) -> None:
+    """Run one queued workspace processing/enrichment job."""
+
+    total_started = perf_counter()
+    db = SessionLocal()
+    try:
+        run_workspace_enrichment_run(db, run_id=run_id)
+        logger.info(
+            "phase3.workspace_enrichment_run_timing run_id=%s total_ms=%.2f",
+            run_id,
+            (perf_counter() - total_started) * 1000.0,
+        )
+    except Exception:
+        logger.exception(
+            "phase3.workspace_enrichment_run_failed run_id=%s elapsed_ms=%.2f",
+            run_id,
+            (perf_counter() - total_started) * 1000.0,
+        )
+        raise
+    finally:
+        db.close()
 
 
 def _populate_entity_embeddings(db, conversation_id: str) -> int:

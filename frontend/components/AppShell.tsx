@@ -106,7 +106,7 @@ function NewChatSidebarButton() {
 }
 
 function SettingsSheetButton() {
-  const { settings, resetSettings, setDensity, setDevMode, setReducedMotion, setTheme } =
+  const { settings, resetSettings, setDensity, setDevMode, setEnrichmentSources, setReducedMotion, setTheme } =
     useAppSettings();
 
   return (
@@ -164,6 +164,19 @@ function SettingsSheetButton() {
               <Label htmlFor="settings-dev-mode">Show technical details</Label>
               <p className="text-xs text-muted-foreground">
                 Reveals raw IDs, payloads, and low-level provenance across pages.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2 rounded-md border border-border/70 px-3 py-2">
+            <Checkbox
+              id="settings-enrichment-sources"
+              checked={settings.enrichmentSources}
+              onCheckedChange={(checked) => setEnrichmentSources(Boolean(checked))}
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor="settings-enrichment-sources">Include sources during enrichment</Label>
+              <p className="text-xs text-muted-foreground">
+                When off, enrichment skips citation collection so runs are cheaper and faster.
               </p>
             </div>
           </div>

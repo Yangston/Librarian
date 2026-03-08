@@ -201,7 +201,10 @@ export function buildConversationGraphElements({
         confidence: relation.confidence,
         label: relation.relation_type
       },
-      classes: "relation"
+      classes:
+        relation.qualifiers_json && relation.qualifiers_json.suggested
+          ? "relation suggested"
+          : "relation"
     });
   });
 
@@ -499,6 +502,16 @@ export const conversationGraphStyles = [
     selector: "edge.showLabel",
     style: {
       label: "data(label)"
+    }
+  },
+  {
+    selector: "edge.suggested",
+    style: {
+      "line-style": "dashed",
+      "line-color": "#d97706",
+      "target-arrow-color": "#d97706",
+      "width": 2,
+      opacity: 0.85
     }
   },
   {

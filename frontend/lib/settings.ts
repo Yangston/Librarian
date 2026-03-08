@@ -6,6 +6,7 @@ export type AppSettings = {
   devMode: boolean;
   density: AppDensity;
   reducedMotion: boolean;
+  enrichmentSources: boolean;
 };
 
 type PersistedAppSettingsEnvelope = {
@@ -20,7 +21,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: "system",
   devMode: false,
   density: "comfortable",
-  reducedMotion: false
+  reducedMotion: false,
+  enrichmentSources: true
 };
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -49,7 +51,11 @@ function normalizeAppSettings(input: Partial<AppSettings> | null | undefined): A
     reducedMotion:
       typeof input?.reducedMotion === "boolean"
         ? input.reducedMotion
-        : DEFAULT_APP_SETTINGS.reducedMotion
+        : DEFAULT_APP_SETTINGS.reducedMotion,
+    enrichmentSources:
+      typeof input?.enrichmentSources === "boolean"
+        ? input.enrichmentSources
+        : DEFAULT_APP_SETTINGS.enrichmentSources
   };
 }
 

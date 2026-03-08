@@ -13,6 +13,7 @@ class LiveChatTurnRequest(BaseModel):
     pod_id: int | None = Field(default=None, ge=1)
     auto_extract: bool = True
     system_prompt: str | None = None
+    workspace_enrichment_include_sources: bool = True
 
 
 class LiveChatTurnResult(BaseModel):
@@ -22,3 +23,4 @@ class LiveChatTurnResult(BaseModel):
     user_message: MessageRead
     assistant_message: MessageRead
     extraction: ExtractionRunResult | None = None
+    workspace_enrichment_run_id: int | None = None

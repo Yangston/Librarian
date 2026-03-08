@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useIsDevMode } from "@/components/AppSettingsProvider";
+import { useAppSettings, useIsDevMode } from "@/components/AppSettingsProvider";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
@@ -21,6 +21,7 @@ import {
   SelectValue
 } from "../../../components/ui/select";
 import {
+  acceptWorkspaceGraphSuggestionsV3,
   type CollectionTreeNode,
   type ConversationGraphData,
   type ConversationsListResponse,
@@ -28,15 +29,20 @@ import {
   type RelationWithEntitiesRead,
   deleteEntityRecord,
   deleteRelation,
+  enrichWorkspaceCollectionV3,
+  enrichWorkspaceSpaceV3,
   getConversationGraph,
   getConversations,
+  getLatestWorkspaceEnrichmentRunForSpaceV3,
   getPodTree,
   getPods,
   getScopedGraph,
+  rejectWorkspaceGraphSuggestionsV3,
   updateEntityRecord,
   updateRelation
 } from "../../../lib/api";
 import type { GraphNodePosition } from "../../../lib/graph-layout";
+import { useWorkspaceEnrichmentMonitor } from "../../../lib/use-workspace-enrichment-monitor";
 
 function normalizeTypeLabel(typeLabel: string): string {
   const clean = typeLabel.trim();
@@ -58,7 +64,10 @@ function mapScopedGraphToConversationGraph(payload: Awaited<ReturnType<typeof ge
       type_label: node.type_label || "Unspecified",
       aliases_json: [],
       known_aliases_json: [],
-      tags_json: node.external ? ["external"] : [],
+      tags_json: [
+        ...(node.external ? ["external"] : []),
+        ...(node.pending_suggestion_count > 0 ? ["pending-suggestions"] : [])
+      ],
       first_seen_timestamp: now,
       resolution_confidence: 1,
       resolution_reason: null,
@@ -77,7 +86,11 @@ function mapScopedGraphToConversationGraph(payload: Awaited<ReturnType<typeof ge
       to_entity_name: nodeById.get(edge.to_entity_id)?.canonical_name ?? String(edge.to_entity_id),
       scope: "global",
       confidence: edge.confidence,
-      qualifiers_json: {},
+      qualifiers_json: {
+        suggested: edge.suggested,
+        status: edge.status,
+        source_kind: edge.source_kind
+      },
       source_message_ids_json: [],
       extractor_run_id: null,
       created_at: now
@@ -87,6 +100,7 @@ function mapScopedGraphToConversationGraph(payload: Awaited<ReturnType<typeof ge
 
 export default function GraphPage() {
   const isDevMode = useIsDevMode();
+  const { settings } = useAppSettings();
   const [viewMode, setViewMode] = useState<"conversation" | "workspace">("conversation");
   const [conversationList, setConversationList] = useState<ConversationsListResponse | null>(null);
   const [conversationInput, setConversationInput] = useState("");
@@ -96,6 +110,7 @@ export default function GraphPage() {
   const [scopeCollectionId, setScopeCollectionId] = useState<string>("__none__");
   const [oneHopScope, setOneHopScope] = useState(false);
   const [includeExternalScope, setIncludeExternalScope] = useState(false);
+  const [pendingGraphSuggestionCount, setPendingGraphSuggestionCount] = useState(0);
   const [pods, setPods] = useState<PodRead[]>([]);
   const [scopeCollections, setScopeCollections] = useState<CollectionTreeNode[]>([]);
   const [graph, setGraph] = useState<ConversationGraphData | null>(null);
@@ -192,6 +207,7 @@ export default function GraphPage() {
       }
 
       setGraph(payload);
+      setPendingGraphSuggestionCount(0);
       setHoveredNodeId(null);
       setSelectedNodeId((current) =>
         current !== null && payload.entities.some((entity) => entity.id === current) ? current : null
@@ -233,6 +249,7 @@ export default function GraphPage() {
         pruneStalePositions(mapped);
       }
       setGraph(mapped);
+      setPendingGraphSuggestionCount(payload.pending_suggestion_count ?? 0);
       setHoveredNodeId(null);
       setSelectedNodeId((current) =>
         current !== null && mapped.entities.some((entity) => entity.id === current) ? current : null
@@ -240,6 +257,16 @@ export default function GraphPage() {
     },
     [clearLayoutState, pruneStalePositions]
   );
+
+  function buildGraphScopeKey(): string {
+    if (workspaceScopeMode === "collection" && scopeCollectionId !== "__none__") {
+      return `collection-${scopeCollectionId}`;
+    }
+    if (workspaceScopeMode === "pod" && scopePodId !== "__none__") {
+      return `pod-${scopePodId}`;
+    }
+    return "global";
+  }
 
   useEffect(() => {
     let active = true;
@@ -478,6 +505,71 @@ export default function GraphPage() {
     workspaceScopeMode
   ]);
 
+  const graphEnrichment = useWorkspaceEnrichmentMonitor({
+    onCompleted: async () => {
+      await refreshGraph();
+    },
+    onFailed: (message) => {
+      setError(message);
+    }
+  });
+
+  async function handleEnrichWorkspaceGraph() {
+    setError(null);
+    try {
+      const activePodId =
+        workspaceScopeMode === "collection" && scopePodId !== "__none__"
+          ? Number.parseInt(scopePodId, 10)
+          : scopePodId !== "__none__"
+          ? Number.parseInt(scopePodId, 10)
+          : null;
+      if (activePodId !== null) {
+        const latestRun = await getLatestWorkspaceEnrichmentRunForSpaceV3(activePodId);
+        if (latestRun && (latestRun.status === "queued" || latestRun.status === "running")) {
+          graphEnrichment.beginMonitoring(latestRun);
+          return;
+        }
+      }
+      if (workspaceScopeMode === "collection" && scopeCollectionId !== "__none__") {
+        await graphEnrichment.startRun(() =>
+          enrichWorkspaceCollectionV3(Number.parseInt(scopeCollectionId, 10), {
+            include_sources: settings.enrichmentSources
+          })
+        );
+      } else if (scopePodId !== "__none__") {
+        await graphEnrichment.startRun(() =>
+          enrichWorkspaceSpaceV3(Number.parseInt(scopePodId, 10), {
+            include_sources: settings.enrichmentSources
+          })
+        );
+      } else {
+        throw new Error("Select a pod or collection scope before enriching the graph.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to enrich graph.");
+    }
+  }
+
+  async function handleAcceptGraphSuggestions() {
+    try {
+      await acceptWorkspaceGraphSuggestionsV3(buildGraphScopeKey());
+      await refreshGraph();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to accept graph suggestions.");
+    }
+  }
+
+  async function handleRejectGraphSuggestions() {
+    try {
+      await rejectWorkspaceGraphSuggestionsV3(buildGraphScopeKey());
+      await refreshGraph();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reject graph suggestions.");
+    }
+  }
+
+  const hasActiveGraphRun = graphEnrichment.run?.status === "queued" || graphEnrichment.run?.status === "running";
+
   useEffect(() => {
     let active = true;
     async function hydrateWorkspaceGraph() {
@@ -510,6 +602,35 @@ export default function GraphPage() {
       active = false;
     };
   }, [refreshGraph, scopeCollectionId, scopePodId, viewMode, workspaceScopeMode]);
+
+  useEffect(() => {
+    if (viewMode !== "workspace" || scopePodId === "__none__") {
+      graphEnrichment.clearRun();
+      return;
+    }
+    let active = true;
+    async function loadLatestRun() {
+      try {
+        const latestRun = await getLatestWorkspaceEnrichmentRunForSpaceV3(Number.parseInt(scopePodId, 10));
+        if (!active) {
+          return;
+        }
+        if (latestRun && (latestRun.status === "queued" || latestRun.status === "running")) {
+          graphEnrichment.beginMonitoring(latestRun);
+        } else {
+          graphEnrichment.clearRun();
+        }
+      } catch {
+        if (active) {
+          graphEnrichment.clearRun();
+        }
+      }
+    }
+    void loadLatestRun();
+    return () => {
+      active = false;
+    };
+  }, [scopePodId, viewMode]);
 
   async function handleLoadGraph(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -988,6 +1109,9 @@ export default function GraphPage() {
               <Badge variant="outline">Edges: {visibleRelations.length}</Badge>
               <Badge variant="outline">Clusters: {visibleClusterCount}</Badge>
               <Badge variant="outline">Mode: Freeform</Badge>
+              {viewMode === "workspace" && pendingGraphSuggestionCount > 0 ? (
+                <Badge variant="outline">{pendingGraphSuggestionCount} pending suggestions</Badge>
+              ) : null}
             </div>
             <div className="graphCanvasControls">
               <Button type="button" variant="outline" onClick={() => canvasRef.current?.fitView()}>
@@ -1015,10 +1139,48 @@ export default function GraphPage() {
               <Button type="button" variant="outline" onClick={() => void toggleGraphFullscreen()}>
                 {isGraphFullscreen ? "Exit fullscreen" : "Fullscreen"}
               </Button>
+              {viewMode === "workspace" ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleEnrichWorkspaceGraph()}
+                    disabled={graphEnrichment.isStartingRun || hasActiveGraphRun}
+                  >
+                    {graphEnrichment.isStartingRun ? "Starting..." : "Refresh enrichment"}
+                  </Button>
+                  {hasActiveGraphRun ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void graphEnrichment.refreshStatus()}
+                      disabled={graphEnrichment.isStartingRun}
+                    >
+                      Refresh status
+                    </Button>
+                  ) : null}
+                </>
+              ) : null}
+              {viewMode === "workspace" && pendingGraphSuggestionCount > 0 ? (
+                <>
+                  <Button type="button" variant="outline" onClick={() => void handleAcceptGraphSuggestions()}>
+                    Accept pending
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => void handleRejectGraphSuggestions()}>
+                    Reject pending
+                  </Button>
+                </>
+              ) : null}
             </div>
+            {viewMode === "workspace" && graphEnrichment.statusMessage ? (
+              <p className="text-xs text-muted-foreground">{graphEnrichment.statusMessage}</p>
+            ) : null}
             <div className="graphLegend">
               <span className="legendItem">
                 <span className="legendSwatch graphLegendDefault" /> relation edge
+              </span>
+              <span className="legendItem">
+                <span className="legendSwatch graphLegendHighlight" /> pending suggested edge
               </span>
               <span className="legendItem">
                 <span className="legendSwatch graphLegendHighlight" /> highlighted relation
@@ -1144,6 +1306,9 @@ export default function GraphPage() {
                       ) : (
                         selectedNodeRelations.map((relation) => {
                           const isEditing = editingRelationId === relation.id;
+                          const isWorkspaceSuggestion = Boolean(relation.qualifiers_json?.suggested) || relation.id < 0;
+                          const isSyntheticWorkspaceEdge = relation.id >= 1000000;
+                          const canMutateRelation = !isWorkspaceSuggestion && !isSyntheticWorkspaceEdge;
                           return (
                             <tr key={relation.id}>
                               <td>{relation.from_entity_name}</td>
@@ -1160,7 +1325,12 @@ export default function GraphPage() {
                                     }
                                   />
                                 ) : (
-                                  relation.relation_type
+                                  <div className="flex items-center gap-2">
+                                    <span>{relation.relation_type}</span>
+                                    {isWorkspaceSuggestion ? (
+                                      <span className="tag border-amber-300 bg-amber-100 text-amber-900">pending</span>
+                                    ) : null}
+                                  </div>
                                 )}
                               </td>
                               <td>{relation.to_entity_name}</td>
@@ -1204,14 +1374,14 @@ export default function GraphPage() {
                                         variant="outline"
                                         type="button"
                                         onClick={() => beginRelationEdit(relation)}
-                                        disabled={saving}
+                                        disabled={saving || !canMutateRelation}
                                       >
                                         Edit
                                       </Button>
                                       <DeleteActionButton
                                         type="button"
                                         onClick={() => requestDeleteRelation(relation.id)}
-                                        disabled={saving}
+                                        disabled={saving || !canMutateRelation}
                                       />
                                     </div>
                                   )}
@@ -1240,7 +1410,11 @@ export default function GraphPage() {
         </section>
       ) : (
         <Card>
-          <CardContent className="py-6">No graph data for this conversation yet.</CardContent>
+          <CardContent className="py-6">
+            {viewMode === "workspace" && hasActiveGraphRun
+              ? "Workspace graph updating. Accepted graph edges will appear when sync finishes."
+              : "No graph data for this conversation yet."}
+          </CardContent>
         </Card>
       )}
 
