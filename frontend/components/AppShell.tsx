@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { warmWorkspaceApi } from "@/lib/api";
 import { type AppDensity, type AppTheme } from "@/lib/settings";
 import { AppSettingsProvider, useAppSettings } from "@/components/AppSettingsProvider";
+import { BrandIcon } from "@/components/BrandIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -287,13 +288,13 @@ function AppShellFrame({
       <Sidebar collapsible="icon" variant="inset" className="overflow-hidden">
         <SidebarHeader className="gap-3 p-3">
           <Link
-            href="/app"
+            href="/"
             className="flex items-center justify-between gap-2 rounded-md border border-sidebar-border bg-background/80 px-3 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
           >
             <span className="font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
               Librarian
             </span>
-            <Library className="hidden h-4 w-4 text-primary group-data-[collapsible=icon]:inline" aria-hidden />
+            <BrandIcon className="hidden group-data-[collapsible=icon]:inline-flex" iconClassName="h-4 w-4" />
             <Badge
               variant="secondary"
               className="text-[10px] uppercase tracking-wide group-data-[collapsible=icon]:hidden"
